@@ -6,7 +6,7 @@
 
 typedef struct element element;
 struct element;
-int compare(element *a, element *b);
+int compare(element *a,element *b);
 typedef struct list list;
 struct list;
 void list_initialize(list *l);
@@ -15,25 +15,25 @@ void clear(list *l);
 void listSort(list *l);
 void stringAdd(char *dst, const size_t offset, const char *src);
 size_t appendSubdirName(char *path, const size_t pathLength, const char *subName);
-int argumentParse(int argc, char **argv, char **source, char **destination, unsigned int *sleepInterval, bool *isRecursive, unsigned long long* copyThreshold);
-int isDirectoryValid(const char *path)
-void Daemon(char *source, char *destination, unsigned int sleepInterval, bool isRecursive)
-void sigusr1Handler(int signo)
-void sigtermHandler(int signo)
+int argumentParse(int argc, char **argv, char **source, char **destination, unsigned int *sleepInterval, char* isRecursive, unsigned long long* copyThreshold);
+int isDirectoryValid(const char *path);
+void Daemon(char *source, char *destination, unsigned int sleepInterval, char isRecursive);
+void sigusr1Handler(int signo);
+void sigtermHandler(int signo);
 
-int listFiles(DIR *dir, list *files)
-int listFilesAndDir(DIR *dir, list *files, list *dirs)
-int createEmptyDir(const char *path, mode_t mode)
-int removeDirRecursively(const char *path, const size_t pathLength)
+int listFiles(DIR *dir, list *files);
+int listFilesAndDir(DIR *dir, list *files, list *dirs);
+int createEmptyDir(const char *path, mode_t mode);
+int removeDirRecursively(const char *path, const size_t pathLength);
 
-int copySmallFile(const char *srcFilePath, const char *dstFilePath, const mode_t dstMode, const struct timespec *dstAccessTime, const struct timespec *dstModificationTime)
-int copyBigFile(const char *srcFilePath, const char *dstFilePath, const unsigned long long fileSize, const mode_t dstMode, const struct timespec *dstAccessTime, const struct timespec *dstModificationTime)
-int removeFile(const char *path)
+int copySmallFile(const char *srcFilePath, const char *dstFilePath, const mode_t dstMode, const struct timespec *dstAccessTime, const struct timespec *dstModificationTime);
+int copyBigFile(const char *srcFilePath, const char *dstFilePath, const unsigned long long fileSize, const mode_t dstMode, const struct timespec *dstAccessTime, const struct timespec *dstModificationTime);
+int removeFile(const char *path);
 
-int updateDestFiles(const char *srcDirPath, const size_t srcDirPathLength, list *filesSrc, const char *dstDirPath, const size_t dstDirPathLength, list *filesDst)
-int updateDestDir(const char *srcDirPath, const size_t srcDirPathLength, list *subdirsSrc, const char *dstDirPath, const size_t dstDirPathLength, list *subdirsDst, char *isReady)
+int updateDestFiles(const char *srcDirPath, const size_t srcDirPathLength, list *filesSrc, const char *dstDirPath, const size_t dstDirPathLength, list *filesDst);
+int updateDestDir(const char *srcDirPath, const size_t srcDirPathLength, list *subdirsSrc, const char *dstDirPath, const size_t dstDirPathLength, list *subdirsDst, char *isReady);
 
-int syncNonRecursively(const char *sourcePath, const size_t sourcePathLength, const char *destinationPath, const size_t destinationPathLength)
-int syncRecursively(const char *sourcePath, const size_t sourcePathLength, const char *destinationPath, const size_t destinationPathLength)
-typedef int (*synchronizer)(const char *sourcePath, const size_t sourcePathLength, const char *destinationPath, const size_t destinationPathLength)
+int syncNonRecursively(const char *sourcePath, const size_t sourcePathLength, const char *destinationPath, const size_t destinationPathLength);
+int syncRecursively(const char *sourcePath, const size_t sourcePathLength, const char *destinationPath, const size_t destinationPathLength);
+typedef int (*synchronizer)(const char *sourcePath, const size_t sourcePathLength, const char *destinationPath, const size_t destinationPathLength);
 #endif

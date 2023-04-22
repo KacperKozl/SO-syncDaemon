@@ -1,9 +1,57 @@
 #include "SyncDaemon.h"
+#include <unistd.h>
+#include <limits.h>
+#include <dirent.h>
 int main(int argc, char** argv)
 {
 
 }
-int argumentParse(int argc, char** argv, char** source, char** destination, unsigned int* sleepInterval, bool* isRecursive, unsigned long long* copyThreshold)
+struct element{
+    element *next;
+    struct dirent *value;
+};
+int compare(element *a, element *b){
+    return strcmp(a->value->d_name,b->value->d_name);
+}
+struct list{
+    element *first,*last;
+    unsigned int number;
+};
+void list_initialize(list *l){
+    l->first=NULL;
+    l->last=NULL;
+    l->number=0;
+}
+int add(list *l, struct dirent *newEntry){
+    element* elem =NULL;
+    if((elem=malloc(sizeof(element)))==NULL) return -1;
+    elem->value=newEntry;
+    elem->next=NULL;
+    if(l->first=NULL)
+    {
+        l->first=elem;
+        l->last=elem;
+        l->number=1;
+    }
+    else
+    {
+        l->last->next=elem;
+        l->last=elem;
+        ++l->number;
+    }
+    return 0;
+}
+void clear(list *l){
+    element* elem=l->first;
+    element* next;
+    while(elem!=NULL){
+        next=elem->next;
+        free(elem);
+        elem=next;
+    }
+    list_initialize(l);
+}
+int argumentParse(int argc, char** argv, char** source, char** destination, unsigned int* sleepInterval, char* isRecursive, unsigned long long* copyThreshold)
 {
     if(argc<=1) return -1;
     *isRecursive= 0;
@@ -18,7 +66,7 @@ int argumentParse(int argc, char** argv, char** source, char** destination, unsi
                 if(sscanf(optarg,"%u",sleepInterval)<1) return -2;
                 break;
             case'R':
-                *isRecursive=true;
+                *isRecursive=(char)1;
             break;
             case't':
                 if(sscanf(optarg,"%llu",copyThreshold)<1) return -3;
