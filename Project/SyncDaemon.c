@@ -104,11 +104,14 @@ int argumentParse(int argc, char** argv, char** source, char** destination, unsi
     *destination=argv[optind+1];
     return 0;
 }
+void stringAdd(char *dst, const size_t offset, const char *src){
+    strcpy(dst+offset,src);
+}
 size_t addtoSubDirName(char*path, const size_t pathLen,const char*name){
     //Dopisujemny na końcu ścieżki, nazwę nowego katalogu
-    strcpy(path+pathLen,name);
+    stringAdd(path,pathLen,name);
     size_t subPathLen=pathLen+strlen(name);
-    strcpy(path+subPathLen,"/");
+    stringAdd(path,subPathLen,"/");
     subPathLen++;
     return subPathLen;
 }
@@ -150,4 +153,87 @@ int listFilesAndDir(DIR *directory, list *files, list *dirs){
     }
     if(errno!=0) return -2;
     return 0;
+}
+void Daemon(char *source, char *destination, unsigned int sleepInterval, char isRecursive, unsigned long long* copyThreshold){
+    pid_t pid=fork();
+    if(pid==-1){
+        perror("fork");
+        exit(-1);
+    } else if(pid>0){
+        printf("PID procesu potomnego %i\n",pid);
+        exit(0);
+    }
+    int returnCode=0;
+    char*sourcePath=NULL;
+    char*destPath=NULL;
+    if((sourcePath=malloc(sizeof(char)*4096))==NULL) returnCode=-1;
+    else if((destPath=malloc(sizeof(char)*4096))==NULL) returnCode=-2;
+    else if(realpath(source,sourcePath)==NULL){
+        perror("realpath-source");
+        returnCode=-3;
+    }
+    else if(realpath(destination,destPath)==NULL){
+        perror("realpath-destination");
+        returnCode=-4;
+    }
+    else if(setsid()==-1) returnCode=-5;
+    else if(chdir("/")==-1) returnCode=-6;
+    else{
+        if(close(0)==-1) returnCode=-7;
+        if(close(1)==-1) returnCode=-8;
+        if(close(2)==-1) returnCode=-9;
+    }
+    if(returnCode>=0){
+        for(int i=3;i<1024;i++) close(i);
+        sigset_t set;
+        //stdin na dev/null
+        if(open("/dev/null",O_RDWR)==-1) returnCode=-10;
+        //stdout na dev/null
+        else if (dup(0)==-1) returnCode=-11;
+        //stderr na dev/null
+        else if (dup(0)==-1) returnCode=-12;
+        else if (signal(SIGUSR1,sigusr1Handler)==SIG_ERR) returnCode=-13;
+        else if (signal(SIGTERM,sigtermHandler)==SIG_ERR) returnCode=-14;
+        else if(sigemptyset(&set)==-1) returnCode=-15;
+        else if(sigaddset(&set,SIGUSR1)==1) returnCode=-16;
+        else if(sigaddset(&set,SIGTERM)==1) returnCode=-17;
+        else{
+            size_t srcPathLen=strlen(sourcePath);
+            if(sourcePath[srcPathLen-1]!='/') stringAdd(sourcePath,srcPathLen++,"/");
+            size_t destPathLen=strlen(destPath);
+            if(destPath[destPathLen-1]!='/') stringAdd(destPath,destPathLen++,"/");
+            synchronizer sync;
+            if(isRecursive==0){
+                sync=syncNonRecursively;
+            } else sync=syncRecursively;
+            stopDaemon=0;
+            forcedSyncro=0;
+            while(1){
+                if(forcedSyncro==0){
+                    openlog("SyncDaemon",LOG_ODELAY | LOG_PID, LOG_DAEMON);
+                    syslog(LOG_INFO,"sleep");
+                    closelog();
+                    unsigned int timeLeft=sleep(sleepInterval);
+                    openlog("SyncDaemon",LOG_ODELAY | LOG_PID, LOG_DAEMON);
+                    syslog(LOG_INFO,"wake_up - slept %u seconds",sleepInterval-timeLeft);
+                    closelog();
+                    if(stopDaemon==1) break;
+                }
+                if(sigprocmask(SIG_BLOCK,&set,NULL)==-1) {returnCode=-18;break;}
+                int status=sync(sourcePath,srcPathLen,destPath,destPath);
+                openlog("SyncDaemon",LOG_ODELAY | LOG_PID, LOG_DAEMON);
+                syslog(LOG_INFO,"end of synchronization - %d",status);
+                closelog();
+                forcedSyncro=0;
+                if(sigprocmask(SIG_UNBLOCK,&set,NULL)==-1) {returnCode=-19;break;}
+                if(forcedSyncro==0&&stopDaemon=1) break;
+            }
+        }
+    }
+    if(sourcePath!=NULL) free(sourcePath);
+    if(destPath!=NULL) free(destPath);
+    openlog("SyncDaemon",LOG_ODELAY | LOG_PID, LOG_DAEMON);
+    syslog(LOG_INFO,"end of Deamon - %d",returnCode);
+    closelog();
+    exit(returnCode);
 }

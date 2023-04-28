@@ -13,10 +13,11 @@ void list_initialize(list *l);
 int add(list *l, struct dirent *newEntry);
 void clear(list *l);
 void listSort(list *l);
+void stringAdd(char *dst, const size_t offset, const char *src);
 size_t addtoSubDirName(char *path, const size_t pathLength, const char *subName);
 int argumentParse(int argc, char **argv, char **source, char **destination, unsigned int *sleepInterval, char* isRecursive, unsigned long long* copyThreshold);
 int isDirectoryValid(const char *path);
-void Daemon(char *source, char *destination, unsigned int sleepInterval, char isRecursive);
+void Daemon(char *source, char *destination, unsigned int sleepInterval, char isRecursive,unsigned long long* copyThreshold);
 void sigusr1Handler(int signo);
 void sigtermHandler(int signo);
 
