@@ -13,16 +13,15 @@ void list_initialize(list *l);
 int add(list *l, struct dirent *newEntry);
 void clear(list *l);
 void listSort(list *l);
-void stringAdd(char *dst, const size_t offset, const char *src);
-size_t appendSubdirName(char *path, const size_t pathLength, const char *subName);
+size_t addtoSubDirName(char *path, const size_t pathLength, const char *subName);
 int argumentParse(int argc, char **argv, char **source, char **destination, unsigned int *sleepInterval, char* isRecursive, unsigned long long* copyThreshold);
 int isDirectoryValid(const char *path);
 void Daemon(char *source, char *destination, unsigned int sleepInterval, char isRecursive);
 void sigusr1Handler(int signo);
 void sigtermHandler(int signo);
 
-int listFiles(DIR *dir, list *files);
-int listFilesAndDir(DIR *dir, list *files, list *dirs);
+int listFiles(DIR *directory, list *files);
+int listFilesAndDir(DIR *directory, list *files, list *dirs);
 int createEmptyDir(const char *path, mode_t mode);
 int removeDirRecursively(const char *path, const size_t pathLength);
 

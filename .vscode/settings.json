@@ -1,5 +1,8 @@
 {
     "files.associations": {
         "unistd.h": "c"
-    }
+    },
+    "cmake.configureArgs": [],
+    "vcpkg.general.enable": false,
+    "cmake.configureSettings": {}
 }
