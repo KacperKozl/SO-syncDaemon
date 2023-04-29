@@ -70,6 +70,22 @@ void clear(list *l){
     }
     list_initialize(l);
 }
+void listSort(list *l) {
+    if (l == NULL || l->first == NULL || l->first->next == NULL) {
+        return;
+    }
+    element *curr = l->first->next;
+    while (curr != NULL) {
+        element *prev = curr->next;
+        dirent *value = curr->value;
+        while (prev != NULL && prev->value->d_name > value->d_name) {
+            prev->next->value = prev->value;
+            prev = prev->next;
+        }
+        prev->value = value;
+        curr = curr->next;
+    }
+}
 int argumentParse(int argc, char** argv, char** source, char** destination, unsigned int* sleepInterval, char* isRecursive)
 {
     if(argc<=1) return -1;
@@ -158,6 +174,65 @@ int listFilesAndDir(DIR *directory, list *files, list *dirs){
     }
     if(errno!=0) return -2;
     return 0;
+}
+int createEmptyDir(const char *path, mode_t mode){
+    return mkdir(path, mode);
+}
+int removeDirRecursively(const char *path, const size_t pathLength){
+    int ret = 0;
+    DIR *dir = opendir(path);
+    if (!dir) {
+        ret = -1;
+        goto exit;
+    }
+
+    list files, subdirs;
+    list_initialize(&files);
+    list_initialize(&subdirs);
+
+    if (listFilesAndDir(dir, &files, &subdirs) < 0) {
+        ret = -2;
+        goto clean_up;
+    }
+
+    char subPath[PATH_MAX];
+    strcpy(subPath, path);
+
+    for (element *cur = subdirs.first; cur != NULL; cur = cur->next) {
+        size_t subPathLength = addtoSubDirName(subPath, pathLength, cur->entry->d_name);
+        if (removeDirRecursively(subPath, subPathLength) < 0) {
+            ret = -4;
+            goto clean_up;
+        }
+    }
+
+    for (element *cur = files.first; cur != NULL; cur = cur->next) {
+        stringAdd(subPath, pathLength, cur->entry->d_name);
+        if (removeFile(subPath) == -1) {
+            ret = -5;
+            goto clean_up;
+        }
+    }
+
+    if (rmdir(path) == -1) {
+        ret = -6;
+        goto clean_up;
+    }
+
+clean_up:
+    clear(&files);
+    clear(&subdirs);
+
+exit:
+    if (dir) {
+        closedir(dir);
+    }
+
+    if (ret >= 0 && ret <= 2) {
+        ret = -ret;
+    }
+
+    return ret;
 }
 
 int copySmallFile(const char *srcFilePath, const char *dstFilePath, const mode_t dstMode, const struct timespec *dstAccessTime, const struct timespec *dstModificationTime)
@@ -626,4 +701,146 @@ int updateDestDir(const char *srcDirPath, const size_t srcDirPathLength, list *s
     free(dstSubDirPath);
     free(srcSubDirPath);
     return returnCode;
+}
+
+int syncNonRecursively(const char *sourcePath, const size_t sourcePathLength, const char *destinationPath, const size_t destinationPathLength){
+    int ret = 0;
+    DIR* dirS = opendir(sourcePath);
+    if (dirS == NULL) {
+        ret = -1;
+        goto cleanup;
+    }
+
+    DIR* dirD = opendir(destinationPath);
+    if (dirD == NULL) {
+        ret = -2;
+        goto cleanup;
+    }
+
+    list filesS, filesD;
+    list_initialize(&filesS);
+    list_initialize(&filesD);
+
+    if (listFiles(dirS, &filesS) < 0) {
+        ret = -3;
+        goto cleanup;
+    }
+
+    if (listFiles(dirD, &filesD) < 0) {
+        ret = -4;
+        goto cleanup;
+    }
+
+    listSort(&filesS);
+    listSort(&filesD);
+
+    if (updateDestFiles(sourcePath, sourcePathLength, &filesS, destinationPath, destinationPathLength, &filesD) != 0) {
+        ret = -5;
+        goto cleanup;
+    }
+
+cleanup:
+    if (dirS != NULL)
+        closedir(dirS);
+
+    if (dirD != NULL)
+        closedir(dirD);
+
+    clear(&filesS);
+    clear(&filesD);
+
+    return ret;
+}
+int syncRecursively(const char *sourcePath, const size_t sourcePathLength, const char *destinationPath, const size_t destinationPathLength){
+    int ret = 0;
+    DIR *dirS = opendir(sourcePath);
+    DIR *dirD = opendir(destinationPath);
+    if (dirS == NULL) {
+        ret = -1;
+        goto end;
+    }
+    if (dirD == NULL) {
+        ret = -2;
+        goto close_dirS;
+    }
+
+    list filesS, subdirsS, filesD, subdirsD;
+    list_initialize(&filesS);
+    list_initialize(&subdirsS);
+    list_initialize(&filesD);
+    list_initialize(&subdirsD);
+
+    if (listFilesAndDire(dirS, &filesS, &subdirsS) < 0) {
+        ret = -3;
+        goto free_lists;
+    }
+    if (listFilesAndDir(dirD, &filesD, &subdirsD) < 0) {
+        ret = -4;
+        goto free_lists;
+    }
+
+    listSort(&filesS);
+    listSort(&filesD);
+
+    if (updateDestFiles(sourcePath, sourcePathLength, &filesS, destinationPath, destinationPathLength, &filesD) != 0) {
+        ret = -5;
+        goto clear_files_lists;
+    }
+
+    clear(&filesS);
+    clear(&filesD);
+
+    listSort(&subdirsS);
+    listSort(&subdirsD);
+
+    char *isReady = malloc(sizeof(char) * subdirsS.count);
+    if (isReady == NULL) {
+        ret = -6;
+        goto clear_subdirs_lists;
+    }
+
+    if (updateDestDir(sourcePath, sourcePathLength, &subdirsS, destinationPath, destinationPathLength, &subdirsD, isReady) != 0) {
+        ret = -7;
+        goto free_isReady;
+    }
+
+    for (size_t i = 0; i < subdirsS.count; i++) {
+        if (isReady[i]) {
+            char *subdirS = subdirsS.array[i];
+            char *subdirD = subdirsD.array[i];
+            size_t subdirS_len = strlen(subdirS);
+            size_t subdirD_len = strlen(subdirD);
+            int subret = syncRecursively(subdirS, subdirS_len, subdirD, subdirD_len);
+            if (subret != 0) {
+                ret = subret;
+                goto free_isReady;
+            }
+        }
+    }
+
+free_isReady:
+    free(isReady);
+
+clear_subdirs_lists:
+    clear(&subdirsS);
+    clear(&subdirsD);
+
+clear_files_lists:
+    clear(&filesS);
+    clear(&filesD);
+
+free_lists:
+    destroy(&subdirsD);
+    destroy(&filesD);
+    destroy(&subdirsS);
+    destroy(&filesS);
+
+close_dirD:
+    closedir(dirD);
+
+close_dirS:
+    closedir(dirS);
+
+end:
+    return ret;
 }
