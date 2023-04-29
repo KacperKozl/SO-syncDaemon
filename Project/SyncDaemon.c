@@ -70,20 +70,28 @@ void clear(list *l){
     }
     list_initialize(l);
 }
-void listSort(list *l) {
-    if (l == NULL || l->first == NULL || l->first->next == NULL) {
+void listSort(list *l){
+    if(l == NULL || l->first == NULL || l->first->next == NULL) {
         return;
     }
+
     element *curr = l->first->next;
-    while (curr != NULL) {
-        element *prev = curr->next;
-        dirent *value = curr->value;
-        while (prev != NULL && prev->value->d_name > value->d_name) {
-            prev->next->value = prev->value;
-            prev = prev->next;
+
+    while(curr != NULL) {
+        element *insert = curr;
+        element *temp = insert->next;
+
+        while(insert != l->first && compare(insert, insert->next) > 0) {
+            element *prev = l->first;
+            while(prev->next != insert) {
+                prev = prev->next;
+            }
+
+            prev->next = insert->next;
+            insert->next = insert->next->next;
+            prev->next->next = insert;
         }
-        prev->value = value;
-        curr = curr->next;
+        curr = temp;
     }
 }
 int argumentParse(int argc, char** argv, char** source, char** destination, unsigned int* sleepInterval, char* isRecursive)
