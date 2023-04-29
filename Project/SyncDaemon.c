@@ -673,7 +673,7 @@ int updateDestDir(const char *srcDirPath, const size_t srcDirPathLength,
     dstSubDirName = currentDst->value->d_name;
     compare = strcmp(srcSubDirName, dstSubDirName);
     if (compare > 0) {
-      size_t len = addtoSubDirName(dstDirPath, dstDirPathLength, dstSubDirName);
+      size_t len = addtoSubDirName(dstSubDirPath, dstDirPathLength, dstSubDirName);
       status = removeDirRecursively(dstSubDirPath, len);
       syslog(LOG_INFO, "delete directory %s - status %d\n", dstSubDirPath,
              status);
