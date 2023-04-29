@@ -842,6 +842,145 @@ cleanup:
 
   return ret;
 }
+int synchronizeRecursively(const char *sourcePath, const size_t sourcePathLength, const char *destinationPath, const size_t destinationPathLength)
+{
+  // Wstępnie ustawiamy status oznaczający brak błędu.
+  int ret = 0;
+  DIR *dirS = NULL, *dirD = NULL;
+  // Otwieramy katalog źródłowy. Jeżeli wystąpił błąd
+  if ((dirS = opendir(sourcePath)) == NULL)
+    // Ustawiamy status oznaczający błąd. Po tym program natychmiast przechodzi na koniec funkcji.
+    ret = -1;
+  // Otwieramy katalog docelowy. Jeżeli wystąpił błąd
+  else if ((dirD = opendir(destinationPath)) == NULL)
+    // Ustawiamy status oznaczający błąd.
+    ret = -2;
+  else
+  {
+    // Tworzymy listy na pliki i podkatalogi z katalogu źródłowego.
+    list filesS, subdirsS;
+    // Inicjujemy listę plików z katalogu źródłowego.
+    initialize(&filesS);
+    // Inicjujemy listę podkatalogów z katalogu źródłowego.
+    initialize(&subdirsS);
+    // Tworzymy listy na pliki i podkatalogi z katalogu docelowego.
+    list filesD, subdirsD;
+    // Inicjujemy listę plików z katalogu docelowego.
+    initialize(&filesD);
+    // Inicjujemy listę podkatalogów z katalogu docelowego.
+    initialize(&subdirsD);
+    // Wypełniamy listy plików i podkatalogów z katalogu źródłowego. Jeżeli wystąpił błąd
+    if (listFilesAndDirectories(dirS, &filesS, &subdirsS) < 0)
+      // Ustawiamy status oznaczający błąd.
+      ret = -3;
+    // Wypełniamy listy plików i podkatalogów z katalogu docelowego. Jeżeli wystąpił błąd
+    else if (listFilesAndDirectories(dirD, &filesD, &subdirsD) < 0)
+      // Ustawiamy status oznaczający błąd.
+      ret = -4;
+    else
+    {
+      // Sortujemy listę plików z katalogu źródłowego.
+      listMergeSort(&filesS);
+      // Sortujemy listę plików z katalogu docelowego.
+      listMergeSort(&filesD);
+      // Sprawdzamy zgodność i ewentualnie aktualizujemy pliki w katalogu docelowym. Jeżeli wystąpił błąd
+      if (updateDestinationFiles(sourcePath, sourcePathLength, &filesS, destinationPath, destinationPathLength, &filesD) != 0)
+        // Ustawiamy status oznaczający błąd.
+        ret = -5;
+      // Czyścimy listę plików z katalogu źródłowego.
+      clear(&filesS);
+      // Czyścimy listę plików z katalogu docelowego.
+      clear(&filesD);
+
+      // Sortujemy listę podkatalogów z katalogu źródłowego.
+      listMergeSort(&subdirsS);
+      // Sortujemy listę podkatalogów z katalogu docelowego.
+      listMergeSort(&subdirsD);
+      // W komórce i tablicy isReady wpiszemy 1, jeżeli i-ty podkatalog z katalogu źródłowego istnieje lub zostanie prawidłowo utworzony w katalogu docelowym podczas funkcji updateDestinationDirectories, czyli będzie gotowy do rekurencyjnej synchronizacji.
+      char *isReady = NULL;
+      // Rezerwujemy pamięć na tablicę o rozmiarze równym liczbie podkatalogów w katalogu źródłowym. Jeżeli wystąpił błąd
+      if ((isReady = malloc(sizeof(char) * subdirsS.count)) == NULL)
+        // Ustawiamy status oznaczający błąd.
+        ret = -6;
+      else
+      {
+        // Sprawdzamy zgodność i ewentualnie aktualizujemy podkatalogi w katalogu docelowym. Wypełniamy tablicę isReady. Jeżeli wystąpił błąd
+        if (updateDestinationDirectories(sourcePath, sourcePathLength, &subdirsS, destinationPath, destinationPathLength, &subdirsD, isReady) != 0)
+          // Ustawiamy status oznaczający błąd.
+          ret = -7;
+        // Jeszcze nie czyścimy listy podkatalogów z katalogu źródłowego, bo rekurencyjnie będziemy wywoływać funkcję synchronizeRecursively na tych podkatalogach.
+        // Czyścimy listę podkatalogów z katalogu docelowego.
+        clear(&subdirsD);
+
+        char *nextSourcePath = NULL, *nextDestinationPath = NULL;
+        // Rezerwujemy pamięć na ścieżki podkatalogów z katalogu źródłowego. Jeżeli wystąpił błąd
+        if ((nextSourcePath = malloc(sizeof(char) * PATH_MAX)) == NULL)
+          // Ustawiamy status oznaczający błąd.
+          ret = -8;
+        // Rezerwujemy pamięć na ścieżki podkatalogów z katalogu docelowego. Jeżeli wystąpił błąd
+        else if ((nextDestinationPath = malloc(sizeof(char) * PATH_MAX)) == NULL)
+          // Ustawiamy status oznaczający błąd.
+          ret = -9;
+        else
+        {
+          // Przepisujemy ścieżkę katalogu źródłowego jako początek ścieżek jego podkatalogów.
+          strcpy(nextSourcePath, sourcePath);
+          // Przepisujemy ścieżkę katalogu docelowego jako początek ścieżek jego podkatalogów.
+          strcpy(nextDestinationPath, destinationPath);
+          // Zapisujemy wskaźnik na pierwszy podkatalog z katalogu źródłowego.
+          element *curS = subdirsS.first;
+          unsigned int i = 0;
+          while (curS != NULL)
+          {
+            // Jeżeli podkatalog jest gotowy do synchronizacji
+            if (isReady[i++] == 1)
+            {
+              // Tworzymy ścieżkę podkatalogu z katalogu źródłowego i zapisujemy jej długość.
+              size_t nextSourcePathLength = appendSubdirectoryName(nextSourcePath, sourcePathLength, curS->entry->d_name);
+              // Tworzymy ścieżkę podkatalogu z katalogu docelowego i zapisujemy jej długość.
+              size_t nextDestinationPathLength = appendSubdirectoryName(nextDestinationPath, destinationPathLength, curS->entry->d_name);
+              // Rekurencyjnie synchronizujemy podkatalogi. Jeżeli wystąpił błąd
+              if (synchronizeRecursively(nextSourcePath, nextSourcePathLength, nextDestinationPath, nextDestinationPathLength) < 0)
+                // Ustawiamy status oznaczający błąd.
+                ret = -10;
+            }
+            // Jeżeli podkatalog nie jest gotowy do synchronizacji, to go pomijamy.
+            // Przesuwamy wskaźnik na następny podkatalog.
+            curS = curS->next;
+          }
+        }
+        // Zwalniamy tablicę isReady.
+        free(isReady);
+        // Jeżeli pamięć na ścieżkę podkatalogu z katalogu źródłowego została zarezerwowana
+        if (nextSourcePath != NULL)
+          // Zwalniamy pamięć.
+          free(nextSourcePath);
+        // Jeżeli pamięć na ścieżkę podkatalogu z katalogu docelowego została zarezerwowana
+        if (nextDestinationPath != NULL)
+          // Zwalniamy pamięć.
+          free(nextDestinationPath);
+      }
+    }
+    // Czyścimy listę podkatalogów z katalogu źródłowego.
+    clear(&subdirsS);
+    // Jeżeli nie udało się zarezerwować pamięci na isReady, to lista dirsD podkatalogów z katalogu docelowego nie została jeszcze wyczyszczona. Jeżeli zawiera jakieś elementy
+    if (subdirsD.count != 0)
+      // Czyścimy ją.
+      clear(&subdirsD);
+  }
+  // Jeżeli katalog źródłowy został otwarty
+  if (dirS != NULL)
+    // Zamykamy katalog źródłowy. Jeżeli wystąpił błąd, to go ignorujemy.
+    closedir(dirS);
+  // Jeżeli katalog docelowy został otwarty
+  if (dirD != NULL)
+    // Zamykamy katalog docelowy. Jeżeli wystąpił błąd, to go ignorujemy.
+    closedir(dirD);
+  // Zwracamy status.
+  return ret;
+}
+
+/*
 int syncRecursively(const char *sourcePath, const size_t sourcePathLength,
                     const char *destinationPath,
                     const size_t destinationPathLength) {
@@ -938,4 +1077,4 @@ close_dirS:
 
 end:
   return ret;
-}
+}*/
