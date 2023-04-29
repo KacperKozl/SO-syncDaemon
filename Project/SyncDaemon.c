@@ -207,7 +207,7 @@ int removeDirRecursively(const char *path, const size_t pathLength){
     strcpy(subPath, path);
 
     for (element *cur = subdirs.first; cur != NULL; cur = cur->next) {
-        size_t subPathLength = addtoSubDirName(subPath, pathLength, cur->entry->d_name);
+        size_t subPathLength = addtoSubDirName(subPath, pathLength, cur->value->d_name);
         if (removeDirRecursively(subPath, subPathLength) < 0) {
             ret = -4;
             goto clean_up;
@@ -215,7 +215,7 @@ int removeDirRecursively(const char *path, const size_t pathLength){
     }
 
     for (element *cur = files.first; cur != NULL; cur = cur->next) {
-        stringAdd(subPath, pathLength, cur->entry->d_name);
+        stringAdd(subPath, pathLength, cur->value->d_name);
         if (removeFile(subPath) == -1) {
             ret = -5;
             goto clean_up;
@@ -801,7 +801,7 @@ int syncRecursively(const char *sourcePath, const size_t sourcePathLength, const
     listSort(&subdirsS);
     listSort(&subdirsD);
 
-    char *isReady = malloc(sizeof(char) * subdirsS.count);
+    char *isReady = malloc(sizeof(char) * subdirsS.number);
     if (isReady == NULL) {
         ret = -6;
         goto clear_subdirs_lists;
@@ -812,7 +812,7 @@ int syncRecursively(const char *sourcePath, const size_t sourcePathLength, const
         goto free_isReady;
     }
 
-    for (size_t i = 0; i < subdirsS.count; i++) {
+    for (size_t i = 0; i < subdirsS.number; i++) {
         if (isReady[i]) {
             char *subdirS = subdirsS.array[i];
             char *subdirD = subdirsD.array[i];
