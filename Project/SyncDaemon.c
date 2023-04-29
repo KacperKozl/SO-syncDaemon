@@ -9,13 +9,13 @@
 #include <sys/stat.h>
 #include <stdlib.h>
 #include <stddef.h>
-//#include <linux/fs.h>
+#include <linux/fs.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <errno.h>
 #include <sys/mman.h>
 #include <time.h>
-//#include <syslog.h>
+#include <syslog.h>
 #define BUFFER 4096
 static unsigned long long copyThreshold;
 
