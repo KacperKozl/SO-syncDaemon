@@ -14,6 +14,7 @@
 //#include <sys/mman.h>
 //#include <syslog.h>
 #define BUFFER 4096
+static unsigned long long copyThreshold;
 char forcedSyncro;
 char stopDaemon;
 int main(int argc, char** argv)
@@ -65,12 +66,12 @@ void clear(list *l){
     }
     list_initialize(l);
 }
-int argumentParse(int argc, char** argv, char** source, char** destination, unsigned int* sleepInterval, char* isRecursive, unsigned long long* copyThreshold)
+int argumentParse(int argc, char** argv, char** source, char** destination, unsigned int* sleepInterval, char* isRecursive)
 {
     if(argc<=1) return -1;
     *isRecursive= 0;
     *sleepInterval=300;
-    *copyThreshold=ULLONG_MAX;
+    copyThreshold=ULLONG_MAX;
     int options;
     while((options=getopt(argc,argv,":Ri:t:"))!=-1)
     {
@@ -236,4 +237,246 @@ void Daemon(char *source, char *destination, unsigned int sleepInterval, char is
     syslog(LOG_INFO,"end of Deamon - %d",returnCode);
     closelog();
     exit(returnCode);
+}
+int updateDestFiles(const char *srcDirPath, const size_t srcDirPathLength, list *filesSrc, const char *dstDirPath, const size_t dstDirPathLength, list *filesDst){
+    int returnCode=0;
+    int status=0;
+    int compare;
+    char *srcFilePath=NULL;
+    char *dstFilePath=NULL;
+    if((srcFilePath=malloc(sizeof(char)*4096))==NULL) return -1;
+    if((dstFilePath=malloc(sizeof(char)*4096))==NULL) {free(srcFilePath);return -2;}
+    strcpy(srcFilePath,srcDirPath);
+    strcpy(dstFilePath,dstDirPath);
+    element *currentSrc=filesSrc->first;
+    element *currentDst=filesDst->first;
+    struct stat srcFile,dstFile;
+    openlog("SyncDaemon",LOG_ODELAY | LOG_PID, LOG_DAEMON);
+    char* srcFileName;
+    char* dstFileName;
+    while (currentDst!=NULL&&currentSrc!=NULL)
+    {
+        srcFileName=currentSrc->value->d_name;
+        dstFileName=currentDst->value->d_name;
+        compare=strcmp(srcFileName,dstFileName);
+        if(compare>0){
+            stringAdd(dstFilePath,dstDirPathLength,dstFileName);
+            status=removeFile(dstFilePath);
+            syslog(LOG_INFO,"delete file %s -status:%d\n",dstFilePath,status);
+            if(status!=0) returnCode=1;
+            currentDst=currentDst->next;
+        }
+        else{
+            stringAdd(srcFilePath,srcDirPathLength,srcFileName);
+            if(stat(srcFilePath,&srcFile)==-1){
+                if(compare<0){
+                    syslog(LOG_INFO,"failed copying file %s to directory %s-status:%d\n",srcFilePath,dstDirPath,errno);
+                    returnCode=2;
+                }else{
+                    syslog(LOG_INFO,"failed metadata check of source file %s -status:%d\n",srcFilePath,errno);
+                    currentDst=currentDst->next;
+                    returnCode=3;
+                }
+                currentSrc=currentSrc->next;
+            }
+            else{
+                if(compare<0){
+                stringAdd(dstFilePath,dstDirPathLength,srcFileName);
+                if(srcFile.st_size<copyThreshold)
+                    status=copySmallFile(srcFilePath,dstFilePath,srcFile.st_mode,&srcFile.st_atim,&srcFile.st_mtim);
+                    else status=copyBigFile(srcFilePath,dstFilePath,srcFile.st_size,srcFile.st_mode,&srcFile.st_atim,&srcFile.st_mtim);
+                syslog(LOG_INFO,"copying file %s to directory %s -status:%d\n",srcFilePath,dstDirPath,status);
+                if(status!=0) returnCode=4;
+                currentSrc=currentSrc->next;
+                
+                }
+                else{
+                    stringAdd(dstFilePath,dstDirPathLength,dstFileName);
+                    if(stat(dstFilePath,&dstFile)==-1){
+                        syslog(LOG_INFO,"failed metadata check of destination file %s -status:%d\n",dstFilePath,errno);
+                        returnCode=5;
+                    }
+                    else if(srcFile.st_mtim.tv_nsec != dstFile.st_mtim.tv_nsec||srcFile.st_mtim.tv_sec != dstFile.st_mtim.tv_sec){
+                        if(srcFile.st_size<copyThreshold)
+                        status = copySmallFile(srcFilePath, dstFilePath, srcFile.st_mode, &srcFile.st_atim, &srcFile.st_mtim);
+                        else status = copyBigFile(srcFilePath, dstFilePath, srcFile.st_size, srcFile.st_mode, &srcFile.st_atim, &srcFile.st_mtim);
+                        syslog(LOG_INFO,"replacing file %s to directory %s -status:%d\n",srcFilePath,dstDirPath,status);
+                        if(status!=0) returnCode=6;
+                    }
+                    else if(srcFile.st_mode!=dstFile.st_mode){
+                        if(chmod(dstFilePath,srcFile.st_mode)==-1){
+                            syslog(LOG_INFO,"failed copying file rights from %s to %s -status:%d\n",srcFilePath,dstDirPath,errno);
+                            returnCode=7;
+                        } 
+                        else{ 
+                            status=0;
+                            syslog(LOG_INFO,"copying file rights from %s to %s -status:%d\n",srcFilePath,dstDirPath,status);
+                        }
+                    }
+                    currentDst=currentDst->next;
+                    currentSrc=currentSrc->next;
+                }
+            }
+            
+        }
+    }
+    while(currentDst!=NULL){
+        dstFileName=currentDst->value->d_name;
+        stringAdd(dstFilePath,dstDirPathLength,dstFileName);
+        status=removeFile(dstFilePath);
+        syslog(LOG_INFO,"deleting file %s - status %d\n",dstFilePath,status);
+        if(status!=0) returnCode=8;
+        currentDst=currentDst->next;
+    }
+    while(currentSrc!=NULL){
+        srcFileName=currentSrc->value->d_name;
+        stringAdd(srcFilePath,srcDirPathLength,srcFileName);
+        if(stat(srcFilePath,&srcFile)==-1)
+        {
+            syslog(LOG_INFO,"failed copying file %s to directory %s-status:%d\n",srcFilePath,dstDirPath,errno);
+            returnCode=9;
+        }
+        else{
+            stringAdd(dstFilePath,dstDirPathLength,srcFileName);
+            if(srcFile.st_size<copyThreshold)
+                    status=copySmallFile(srcFilePath,dstFilePath,srcFile.st_mode,&srcFile.st_atim,&srcFile.st_mtim);
+                    else status=copyBigFile(srcFilePath,dstFilePath,srcFile.st_size,srcFile.st_mode,&srcFile.st_atim,&srcFile.st_mtim);
+                syslog(LOG_INFO,"copying file %s to directory %s -status:%d\n",srcFilePath,dstDirPath,status);
+                if(status!=0) returnCode=11;
+        }
+        currentSrc=currentSrc->next;
+    }
+    free(dstFilePath);
+    free(srcFilePath);
+    closelog();
+    returnCode;
+}
+int updateDestDir(const char *srcDirPath, const size_t srcDirPathLength, list *subDirsSrc, const char *dstDirPath, const size_t dstDirPathLength, list *subDirsDst, char *isReady){
+    int status=0;
+    int returnCode=0;
+    int compare;
+    int iterator=0;
+    char* srcSubDirPath=NULL;
+    if((srcSubDirPath=malloc(sizeof(char)*4096))==NULL) return -1;
+    char* dstSubDirPath=NULL;
+    if((dstSubDirPath=malloc(sizeof(char)*4069))==NULL){
+        free(srcSubDirPath);
+        return -2;
+    }
+    strcpy(dstSubDirPath,dstDirPath);
+    strcpy(srcSubDirPath,srcDirPath);
+    element *currentSrc=subDirsSrc->first;
+    element *currentDst=subDirsDst->first;
+    struct stat srcSubDir, dstSubDir;
+    openlog("SyncDaemon",LOG_ODELAY | LOG_PID, LOG_DAEMON);
+    char* srcSubDirName;
+    char* dstSubDirName;
+    while(currentDst!=NULL&&currentSrc!=NULL){
+        srcSubDirName=currentSrc->value->d_name;
+        dstSubDirName=currentDst->value->d_name;
+        compare=strcmp(srcSubDirName,dstSubDirName);
+        if(compare>0){
+            size_t len=addtoSubDirName(dstDirPath,dstDirPathLength,dstSubDirName);
+            status=removeDirRecursively(dstSubDirPath,len);
+            syslog(LOG_INFO,"delete directory %s - status %d\n",dstSubDirPath,status);
+            if(syslog!=0) returnCode=1;
+            currentDst=currentDst->next;
+        }
+        else{
+            stringAdd(srcSubDirPath,srcDirPathLength,srcSubDirName);
+            if(stat(srcSubDirPath,&srcSubDir)==-1){
+                if(compare<0){
+                    syslog(LOG_INFO,"failed copying directory %s - status %d\n",dstSubDirPath,errno);
+                    isReady[iterator]=0;
+                    iterator++;
+                    returnCode=2;
+                }
+                else{
+                    syslog(LOG_INFO,"failed accessing metadata src directory %s - status %d\n",srcSubDirPath,errno);
+                    isReady[iterator]=1;
+                    iterator++;
+                    returnCode=3;
+                    currentDst=currentDst->next;
+                }
+                currentSrc=currentSrc->next;
+            }
+            else{
+                if(compare<0){
+                    stringAdd(dstSubDirPath,dstDirPathLength,srcSubDirName);
+                    status=createEmptyDir(dstSubDirPath,srcSubDir.st_mode);
+                    
+                    if(status!=0){
+                        isReady[iterator]=0;
+                        iterator++;
+                        returnCode=4;
+                        syslog(LOG_INFO,"failed creating directory %s - status %d\n",dstSubDirPath,status);
+                    }
+                    else{
+                        isReady[iterator]=1;
+                        iterator++;
+                        syslog(LOG_INFO,"created directory %s - status %d\n",dstSubDirPath,status);
+                    }
+                    currentSrc=currentSrc->next;
+                }
+                else{
+                    isReady[iterator]=1;
+                    iterator++;
+                    stringAdd(dstSubDirPath,dstDirPathLength,dstSubDirName);
+                    if(stat(dstSubDirPath,&dstSubDir)==-1){
+                        syslog(LOG_INFO,"failed accessing metadata dst directory %s - status %d\n",dstSubDirPath,errno);
+                        returnCode=6;
+                    }
+                    else if(dstSubDir.st_mode!=srcSubDir.st_mode){
+                        if(chmod(dstSubDirPath,srcSubDir.st_mode)==-1){
+                            returnCode=7;
+                            syslog(LOG_INFO,"failed copying directory rights from %s to %s -status:%d\n",srcSubDirPath,dstSubDirPath,errno);
+                        }
+                        else{ 
+                            status=0;
+                            syslog(LOG_INFO,"copying directory rights from %s to %s -status:%d\n",srcSubDirPath,dstSubDirPath,status);
+                        }
+                    }
+                    currentDst=currentDst->next;
+                    currentSrc=currentSrc->next;
+                }
+            }
+        }
+    }
+    while(currentDst!=NULL){
+        dstSubDirName=currentDst->value->d_name;
+        size_t len = addtoSubDirName(dstSubDirPath,dstDirPathLength,dstSubDirName);
+        status = removeDirRecursively(dstSubDirPath,len);
+        if(status!=0){
+            syslog(LOG_INFO,"failed deleting directory %s - status %d\n",dstSubDirPath,status);
+            returnCode=8;
+        }else syslog(LOG_INFO,"deleting directory %s - status %d\n",dstSubDirPath,status);
+    }
+    while(currentSrc!=NULL){
+        srcSubDirName=currentSrc->value->d_name;
+        stringAdd(srcSubDirPath,srcDirPathLength,srcSubDirName);
+        if(stat(srcSubDirPath,&srcSubDir)==-1){
+            syslog(LOG_INFO,"failed accessing metadata of directory %s -status %d\n",srcSubDirPath,errno);
+            isReady[iterator]=0;
+            iterator++;
+            returnCode=9;
+        }
+        else{
+            stringAdd(dstSubDirPath,dstDirPathLength,srcSubDirName);
+            status=createEmptyDir(dstSubDirPath,srcSubDir.st_mode);
+            if(status!=0){
+                isReady[iterator]=0;
+                iterator++;
+                returnCode=10;
+                syslog(LOG_INFO,"failed creating directory %s -status %d\n",dstSubDirPath,status);
+            }else{
+                isReady[iterator]=1;
+                iterator++;
+                syslog(LOG_INFO,"created directory %s -status %d\n",dstSubDirPath,status);
+            }
+        }
+        currentSrc=currentSrc->next;
+    }
+    free(dstSubDirPath);
+    free(srcSubDirPath);
+    return returnCode;
 }

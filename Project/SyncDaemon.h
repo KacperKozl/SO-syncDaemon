@@ -15,7 +15,7 @@ void clear(list *l);
 void listSort(list *l);
 void stringAdd(char *dst, const size_t offset, const char *src);
 size_t addtoSubDirName(char *path, const size_t pathLength, const char *subName);
-int argumentParse(int argc, char **argv, char **source, char **destination, unsigned int *sleepInterval, char* isRecursive, unsigned long long* copyThreshold);
+int argumentParse(int argc, char **argv, char **source, char **destination, unsigned int *sleepInterval, char* isRecursive);
 int isDirectoryValid(const char *path);
 void Daemon(char *source, char *destination, unsigned int sleepInterval, char isRecursive,unsigned long long* copyThreshold);
 void sigusr1Handler(int signo);
@@ -31,7 +31,7 @@ int copyBigFile(const char *srcFilePath, const char *dstFilePath, const unsigned
 int removeFile(const char *path);
 
 int updateDestFiles(const char *srcDirPath, const size_t srcDirPathLength, list *filesSrc, const char *dstDirPath, const size_t dstDirPathLength, list *filesDst);
-int updateDestDir(const char *srcDirPath, const size_t srcDirPathLength, list *subdirsSrc, const char *dstDirPath, const size_t dstDirPathLength, list *subdirsDst, char *isReady);
+int updateDestDir(const char *srcDirPath, const size_t srcDirPathLength, list *subDirsSrc, const char *dstDirPath, const size_t dstDirPathLength, list *subDirsDst, char *isReady);
 
 int syncNonRecursively(const char *sourcePath, const size_t sourcePathLength, const char *destinationPath, const size_t destinationPathLength);
 int syncRecursively(const char *sourcePath, const size_t sourcePathLength, const char *destinationPath, const size_t destinationPathLength);
