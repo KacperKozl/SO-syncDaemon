@@ -394,7 +394,7 @@ int removeFile(const char *path) {
 }
 
 void Daemon(char *source, char *destination, unsigned int sleepInterval,
-            char isRecursive, unsigned long long *copyThreshold) {
+            char isRecursive) {
   pid_t pid = fork();
   if (pid == -1) {
     perror("fork");
@@ -899,7 +899,7 @@ int synchronizeRecursively(const char *sourcePath, const size_t sourcePathLength
       // W komórce i tablicy isReady wpiszemy 1, jeżeli i-ty podkatalog z katalogu źródłowego istnieje lub zostanie prawidłowo utworzony w katalogu docelowym podczas funkcji updateDestinationDirectories, czyli będzie gotowy do rekurencyjnej synchronizacji.
       char *isReady = NULL;
       // Rezerwujemy pamięć na tablicę o rozmiarze równym liczbie podkatalogów w katalogu źródłowym. Jeżeli wystąpił błąd
-      if ((isReady = malloc(sizeof(char) * subdirsS.count)) == NULL)
+      if ((isReady = malloc(sizeof(char) * subdirsS.number)) == NULL)
         // Ustawiamy status oznaczający błąd.
         ret = -6;
       else
@@ -936,9 +936,9 @@ int synchronizeRecursively(const char *sourcePath, const size_t sourcePathLength
             if (isReady[i++] == 1)
             {
               // Tworzymy ścieżkę podkatalogu z katalogu źródłowego i zapisujemy jej długość.
-              size_t nextSourcePathLength = appendSubdirectoryName(nextSourcePath, sourcePathLength, curS->entry->d_name);
+              size_t nextSourcePathLength = appendSubdirectoryName(nextSourcePath, sourcePathLength, curS->value->d_name);
               // Tworzymy ścieżkę podkatalogu z katalogu docelowego i zapisujemy jej długość.
-              size_t nextDestinationPathLength = appendSubdirectoryName(nextDestinationPath, destinationPathLength, curS->entry->d_name);
+              size_t nextDestinationPathLength = appendSubdirectoryName(nextDestinationPath, destinationPathLength, curS->value->d_name);
               // Rekurencyjnie synchronizujemy podkatalogi. Jeżeli wystąpił błąd
               if (synchronizeRecursively(nextSourcePath, nextSourcePathLength, nextDestinationPath, nextDestinationPathLength) < 0)
                 // Ustawiamy status oznaczający błąd.
@@ -964,7 +964,7 @@ int synchronizeRecursively(const char *sourcePath, const size_t sourcePathLength
     // Czyścimy listę podkatalogów z katalogu źródłowego.
     clear(&subdirsS);
     // Jeżeli nie udało się zarezerwować pamięci na isReady, to lista dirsD podkatalogów z katalogu docelowego nie została jeszcze wyczyszczona. Jeżeli zawiera jakieś elementy
-    if (subdirsD.count != 0)
+    if (subdirsD.number != 0)
       // Czyścimy ją.
       clear(&subdirsD);
   }
