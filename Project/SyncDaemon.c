@@ -40,7 +40,7 @@ int main(int argc, char** argv)
     }
     Daemon(src,dst,sleepInterval,isRecursive);
     return 0;
-}   
+}
 struct element{
     element *next;
     struct dirent *value;
@@ -842,7 +842,7 @@ cleanup:
 
   return ret;
 }
-int synchronizeRecursively(const char *sourcePath, const size_t sourcePathLength, const char *destinationPath, const size_t destinationPathLength)
+int syncRecursively(const char *sourcePath, const size_t sourcePathLength, const char *destinationPath, const size_t destinationPathLength)
 {
   // Wstępnie ustawiamy status oznaczający brak błędu.
   int ret = 0;
@@ -940,7 +940,7 @@ int synchronizeRecursively(const char *sourcePath, const size_t sourcePathLength
               // Tworzymy ścieżkę podkatalogu z katalogu docelowego i zapisujemy jej długość.
               size_t nextDestinationPathLength = addtoSubDirName(nextDestinationPath, destinationPathLength, curS->value->d_name);
               // Rekurencyjnie synchronizujemy podkatalogi. Jeżeli wystąpił błąd
-              if (synchronizeRecursively(nextSourcePath, nextSourcePathLength, nextDestinationPath, nextDestinationPathLength) < 0)
+              if (syncRecursively(nextSourcePath, nextSourcePathLength, nextDestinationPath, nextDestinationPathLength) < 0)
                 // Ustawiamy status oznaczający błąd.
                 ret = -10;
             }
