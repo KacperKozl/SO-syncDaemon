@@ -16,6 +16,7 @@
 #include <sys/mman.h>
 #include <time.h>
 #include <syslog.h>
+#include <getopt.h>
 #define BUFFER 4096
 static unsigned long long copyThreshold;
 
@@ -112,7 +113,7 @@ int argumentParse(int argc, char** argv, char** source, char** destination, unsi
                 *isRecursive=1;
             break;
             case't':
-                if(sscanf(optarg,"%llu",&copyThreshold)<1) return -3;
+                if(sscanf(optarg,"%llu",copyThreshold)<1) return -3;
                 break;
             case':':
                 printf("Opcja wymaga podania wartosci");
@@ -457,7 +458,7 @@ void Daemon(char *source, char *destination, unsigned int sleepInterval, char is
                 closelog();
                 forcedSyncro=0;
                 if(sigprocmask(SIG_UNBLOCK,&set,NULL)==-1) {returnCode=-19;break;}
-                if(forcedSyncro==0&&stopDaemon=1) break;
+                if(forcedSyncro==0&&stopDaemon==1) break;
             }
         }
     }
@@ -778,7 +779,7 @@ int syncRecursively(const char *sourcePath, const size_t sourcePathLength, const
     list_initialize(&filesD);
     list_initialize(&subdirsD);
 
-    if (listFilesAndDir(dirS, &filesS, &subdirsS) < 0) {
+    if (listFilesAndDire(dirS, &filesS, &subdirsS) < 0) {
         ret = -3;
         goto free_lists;
     }
