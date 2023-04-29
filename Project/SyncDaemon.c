@@ -1,4 +1,6 @@
 #include "SyncDaemon.h"
+#include <stdio.h>
+#include <errno.h>
 #include <unistd.h>
 #include <limits.h>
 #include <sys/types.h>
@@ -11,10 +13,12 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <errno.h>
-//#include <sys/mman.h>
+#include <sys/mman.h>
+#include <time.h>
 //#include <syslog.h>
 #define BUFFER 4096
 static unsigned long long copyThreshold;
+
 char forcedSyncro;
 char stopDaemon;
 int main(int argc, char** argv)
@@ -155,6 +159,149 @@ int listFilesAndDir(DIR *directory, list *files, list *dirs){
     if(errno!=0) return -2;
     return 0;
 }
+
+int copySmallFile(const char *srcFilePath, const char *dstFilePath, const mode_t dstMode, const struct timespec *dstAccessTime, const struct timespec *dstModificationTime)
+{
+    int ret = 0, in = -1, out = -1;
+
+    // Open source file for reading and save its file descriptor
+    if ((in = open(srcFilePath, O_RDONLY)) == -1)
+    {
+        ret = -1;
+        goto cleanup;
+    }
+
+    // Open destination file for writing, create it if it doesn't exist, and clear it if it exists. Save its file descriptor
+    if ((out = open(dstFilePath, O_WRONLY | O_CREAT | O_TRUNC, dstMode)) == -1)
+    {
+        ret = -2;
+        goto cleanup;
+    }
+
+    // Set access and modification time of destination file
+    if (futimens(out, dstAccessTime) == -1)
+    {
+        ret = -3;
+        goto cleanup;
+    }
+
+    // Read data from source file and write it to destination file
+    char buffer[BUFFER];
+    ssize_t bytesRead, bytesWritten;
+
+    while ((bytesRead = read(in, buffer, BUFFER)) > 0)
+    {
+        bytesWritten = write(out, buffer, bytesRead);
+        if (bytesWritten != bytesRead)
+        {
+            ret = -4;
+            goto cleanup;
+        }
+    }
+
+    if (bytesRead == -1)
+    {
+        ret = -5;
+        goto cleanup;
+    }
+
+    cleanup:
+        if (in != -1) close(in);
+        if (out != -1) close(out);
+
+        return ret;
+}
+
+int copyBigFile(const char *srcFilePath, const char *dstFilePath, const unsigned long long fileSize, const mode_t dstMode, const struct timespec *dstAccessTime, const struct timespec *dstModificationTime)
+{
+    int ret = 0, in = -1, out = -1;
+    if ((in = open(srcFilePath, O_RDONLY)) == -1)
+        ret = -1;
+    else if ((out = open(dstFilePath, O_WRONLY | O_CREAT | O_TRUNC, dstMode)) == -1)
+        ret = -2;
+    else if (fchmod(out, dstMode) == -1)
+        ret = -3;
+    else
+    {
+        char *map;
+        if ((map = mmap(0, fileSize, PROT_READ, MAP_SHARED, in, 0)) == MAP_FAILED)
+            ret = -4;
+        else
+        {
+            if (madvise(map, fileSize, MADV_SEQUENTIAL) == -1)
+                ret = 1;
+            char buffer[BUFFER];
+            unsigned long long b;
+            char *position;
+            size_t remainingBytes;
+            ssize_t bytesWritten;
+            for (b = 0; b + BUFFER < fileSize; b += BUFFER)
+            {
+                memcpy(buffer, map + b, BUFFER);
+                position = buffer;
+                remainingBytes = BUFFER;
+                while (remainingBytes != 0 && (bytesWritten = write(out, position, remainingBytes)) != 0)
+                {
+                    if (bytesWritten == -1)
+                    {
+                        if (errno == EINTR)
+                            continue;
+                        ret = -6;
+                        b = ULLONG_MAX - BUFFER + 1;
+                        break;
+                    }
+                    remainingBytes -= bytesWritten;
+                    position += bytesWritten;
+                }
+            }
+            if (ret == 0)
+            {
+                memcpy(buffer, map + b, fileSize - b);
+                position = buffer;
+                remainingBytes = fileSize - b;
+                while (remainingBytes != 0 && (bytesWritten = write(out, position, remainingBytes)) != 0)
+                {
+                    if (bytesWritten == -1)
+                    {
+                        if (errno == EINTR)
+                            continue;
+                        ret = -6;
+                        break;
+                    }
+                    remainingBytes -= bytesWritten;
+                    position += bytesWritten;
+                }
+            }
+            munmap(map, fileSize);
+        }
+        close(out);
+    }
+    if (in != -1)
+        close(in);
+    if (ret == 0)
+    {
+        int fd = open(dstFilePath, O_WRONLY);
+        if (fd != -1)
+        {
+            futimens(fd, dstAccessTime);
+            close(fd);
+        }
+        else
+        {
+            ret = -5;
+        }
+    }
+    return ret;
+}
+
+int removeFile(const char *path) {
+    int result = unlink(path);
+    if (result == -1) {
+        fprintf(stderr, "Error removing file: %s\n", path);
+    }
+    return result;
+}
+
 void Daemon(char *source, char *destination, unsigned int sleepInterval, char isRecursive, unsigned long long* copyThreshold){
     pid_t pid=fork();
     if(pid==-1){
