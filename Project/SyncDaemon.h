@@ -17,7 +17,7 @@ void stringAdd(char *dst, const size_t offset, const char *src);
 size_t addtoSubDirName(char *path, const size_t pathLength, const char *subName);
 int argumentParse(int argc, char **argv, char **source, char **destination, unsigned int *sleepInterval, char* isRecursive);
 int isDirectoryValid(const char *path);
-void Daemon(char *source, char *destination, unsigned int sleepInterval, char isRecursive,unsigned long long* copyThreshold);
+void Daemon(char *source, char *destination, unsigned int sleepInterval, char isRecursive;
 void sigusr1Handler(int signo);
 void sigtermHandler(int signo);
 

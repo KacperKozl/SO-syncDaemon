@@ -24,8 +24,24 @@ char forcedSyncro;
 char stopDaemon;
 int main(int argc, char** argv)
 {
-
-}
+    char* src,*dst;
+    unsigned int sleepInterval;
+    char isRecursive;
+    if(argumentParse(argc,argv,&src,&dst,&sleepInterval,&isRecursive)<0){
+        printf("Prawidlowy sposob uzycia: SyncDaemon [-i <czas_spania>] [-R] [-t <minimalna_wielkosc_kopiowania_duzych_plikow>] sciezka_zrodlowa sciezka_docelowa");
+        return -1;
+    }
+    if(isDirectoryValid(dst)<0){
+        perror(dst);
+        return -2;
+    }
+    if(isDirectoryValid(src)<0){
+        perror(src);
+        return -3;
+    }
+    Daemon(src,dst,sleepInterval,isRecursive);
+    return 0;
+}   
 struct element{
     element *next;
     struct dirent *value;
