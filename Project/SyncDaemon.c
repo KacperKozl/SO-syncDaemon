@@ -860,31 +860,31 @@ int synchronizeRecursively(const char *sourcePath, const size_t sourcePathLength
     // Tworzymy listy na pliki i podkatalogi z katalogu źródłowego.
     list filesS, subdirsS;
     // Inicjujemy listę plików z katalogu źródłowego.
-    initialize(&filesS);
+    list_initialize(&filesS);
     // Inicjujemy listę podkatalogów z katalogu źródłowego.
-    initialize(&subdirsS);
+    list_initialize(&subdirsS);
     // Tworzymy listy na pliki i podkatalogi z katalogu docelowego.
     list filesD, subdirsD;
     // Inicjujemy listę plików z katalogu docelowego.
-    initialize(&filesD);
+    list_initialize(&filesD);
     // Inicjujemy listę podkatalogów z katalogu docelowego.
-    initialize(&subdirsD);
+    list_initialize(&subdirsD);
     // Wypełniamy listy plików i podkatalogów z katalogu źródłowego. Jeżeli wystąpił błąd
-    if (listFilesAndDirectories(dirS, &filesS, &subdirsS) < 0)
+    if (listFilesAndDir(dirS, &filesS, &subdirsS) < 0)
       // Ustawiamy status oznaczający błąd.
       ret = -3;
     // Wypełniamy listy plików i podkatalogów z katalogu docelowego. Jeżeli wystąpił błąd
-    else if (listFilesAndDirectories(dirD, &filesD, &subdirsD) < 0)
+    else if (listFilesAndDir(dirD, &filesD, &subdirsD) < 0)
       // Ustawiamy status oznaczający błąd.
       ret = -4;
     else
     {
       // Sortujemy listę plików z katalogu źródłowego.
-      listMergeSort(&filesS);
+      listSort(&filesS);
       // Sortujemy listę plików z katalogu docelowego.
-      listMergeSort(&filesD);
+      listSort(&filesD);
       // Sprawdzamy zgodność i ewentualnie aktualizujemy pliki w katalogu docelowym. Jeżeli wystąpił błąd
-      if (updateDestinationFiles(sourcePath, sourcePathLength, &filesS, destinationPath, destinationPathLength, &filesD) != 0)
+      if (updateDestFiles(sourcePath, sourcePathLength, &filesS, destinationPath, destinationPathLength, &filesD) != 0)
         // Ustawiamy status oznaczający błąd.
         ret = -5;
       // Czyścimy listę plików z katalogu źródłowego.
@@ -893,10 +893,10 @@ int synchronizeRecursively(const char *sourcePath, const size_t sourcePathLength
       clear(&filesD);
 
       // Sortujemy listę podkatalogów z katalogu źródłowego.
-      listMergeSort(&subdirsS);
+      listSort(&subdirsS);
       // Sortujemy listę podkatalogów z katalogu docelowego.
-      listMergeSort(&subdirsD);
-      // W komórce i tablicy isReady wpiszemy 1, jeżeli i-ty podkatalog z katalogu źródłowego istnieje lub zostanie prawidłowo utworzony w katalogu docelowym podczas funkcji updateDestinationDirectories, czyli będzie gotowy do rekurencyjnej synchronizacji.
+      listSort(&subdirsD);
+      // W komórce i tablicy isReady wpiszemy 1, jeżeli i-ty podkatalog z katalogu źródłowego istnieje lub zostanie prawidłowo utworzony w katalogu docelowym podczas funkcji updateDestDir, czyli będzie gotowy do rekurencyjnej synchronizacji.
       char *isReady = NULL;
       // Rezerwujemy pamięć na tablicę o rozmiarze równym liczbie podkatalogów w katalogu źródłowym. Jeżeli wystąpił błąd
       if ((isReady = malloc(sizeof(char) * subdirsS.number)) == NULL)
@@ -905,7 +905,7 @@ int synchronizeRecursively(const char *sourcePath, const size_t sourcePathLength
       else
       {
         // Sprawdzamy zgodność i ewentualnie aktualizujemy podkatalogi w katalogu docelowym. Wypełniamy tablicę isReady. Jeżeli wystąpił błąd
-        if (updateDestinationDirectories(sourcePath, sourcePathLength, &subdirsS, destinationPath, destinationPathLength, &subdirsD, isReady) != 0)
+        if (updateDestDir(sourcePath, sourcePathLength, &subdirsS, destinationPath, destinationPathLength, &subdirsD, isReady) != 0)
           // Ustawiamy status oznaczający błąd.
           ret = -7;
         // Jeszcze nie czyścimy listy podkatalogów z katalogu źródłowego, bo rekurencyjnie będziemy wywoływać funkcję synchronizeRecursively na tych podkatalogach.
@@ -936,9 +936,9 @@ int synchronizeRecursively(const char *sourcePath, const size_t sourcePathLength
             if (isReady[i++] == 1)
             {
               // Tworzymy ścieżkę podkatalogu z katalogu źródłowego i zapisujemy jej długość.
-              size_t nextSourcePathLength = appendSubdirectoryName(nextSourcePath, sourcePathLength, curS->value->d_name);
+              size_t nextSourcePathLength = addtoSubDirName(nextSourcePath, sourcePathLength, curS->value->d_name);
               // Tworzymy ścieżkę podkatalogu z katalogu docelowego i zapisujemy jej długość.
-              size_t nextDestinationPathLength = appendSubdirectoryName(nextDestinationPath, destinationPathLength, curS->value->d_name);
+              size_t nextDestinationPathLength = addtoSubDirName(nextDestinationPath, destinationPathLength, curS->value->d_name);
               // Rekurencyjnie synchronizujemy podkatalogi. Jeżeli wystąpił błąd
               if (synchronizeRecursively(nextSourcePath, nextSourcePathLength, nextDestinationPath, nextDestinationPathLength) < 0)
                 // Ustawiamy status oznaczający błąd.
