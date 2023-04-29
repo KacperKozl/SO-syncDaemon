@@ -112,7 +112,7 @@ int argumentParse(int argc, char** argv, char** source, char** destination, unsi
                 *isRecursive=1;
             break;
             case't':
-                if(sscanf(optarg,"%llu",copyThreshold)<1) return -3;
+                if(sscanf(optarg,"%llu",&copyThreshold)<1) return -3;
                 break;
             case':':
                 printf("Opcja wymaga podania wartosci");
@@ -778,7 +778,7 @@ int syncRecursively(const char *sourcePath, const size_t sourcePathLength, const
     list_initialize(&filesD);
     list_initialize(&subdirsD);
 
-    if (listFilesAndDire(dirS, &filesS, &subdirsS) < 0) {
+    if (listFilesAndDir(dirS, &filesS, &subdirsS) < 0) {
         ret = -3;
         goto free_lists;
     }
