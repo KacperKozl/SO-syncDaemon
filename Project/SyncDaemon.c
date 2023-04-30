@@ -571,7 +571,7 @@ void Daemon(char *source, char *destination, unsigned int sleepInterval,
           returnCode = -18;
           break;
         }
-        int status = syncNonRecursively(sourcePath, srcPathLen, destPath, destPathLen);
+        int status = sync(sourcePath, srcPathLen, destPath, destPathLen);
         openlog("SyncDaemon", LOG_ODELAY | LOG_PID, LOG_DAEMON);
         syslog(LOG_INFO, "end of synchronization - %d", status);
         closelog();
