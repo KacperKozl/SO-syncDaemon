@@ -362,22 +362,12 @@ int copySmallFile(const char *srcFilePath, const char *dstFilePath,
                   const mode_t dstMode, const struct timespec *dstAccessTime,
                   const struct timespec *dstModificationTime) {
   int ret = 0, in = -1, out = -1;
-
   // Open source file for reading and save its file descriptor
   if ((in = open(srcFilePath, O_RDONLY)) == -1) {
     ret = -1;
     goto cleanup;
   }
 
-  // Check if destination file already exists and if so, get its modification
-  // time
-  struct stat dstStat;
-  if (stat(dstFilePath, &dstStat) == 0) {
-    // If the destination file is already up to date, return success
-    if (dstStat.st_mtime >= dstModificationTime->tv_sec) {
-      goto cleanup;
-    }
-  }
 
   // Open destination file for writing, create it if it doesn't exist, and clear
   // it if it exists. Save its file descriptor
@@ -385,12 +375,14 @@ int copySmallFile(const char *srcFilePath, const char *dstFilePath,
     ret = -2;
     goto cleanup;
   }
-
+  const struct timespec time[2]={*dstAccessTime,*dstModificationTime};
+  /*
+  const struct timespec time[2]={*dstAccessTime,*dstModificationTime};
   // Set access and modification time of destination file
-  if (futimens(out, dstAccessTime) == -1) {
+  if (futimens(out, time) == -1) {
     ret = -3;
     goto cleanup;
-  }
+  }*/
 
   // Read data from source file and write it to destination file
   char buffer[BUFFER];
@@ -409,6 +401,11 @@ int copySmallFile(const char *srcFilePath, const char *dstFilePath,
     goto cleanup;
   }
 
+  // Set access and modification time of destination file
+  if (futimens(out, time) == -1) {
+    ret = -3;
+    goto cleanup;
+  }
 cleanup:
   if (in != -1)
     close(in);
