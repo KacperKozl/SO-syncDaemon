@@ -84,33 +84,42 @@ void clear(list *l) {
     elem = next;
   }
   list_initialize(l);
-}/*
+}
+/*
 void listSort(list *l) {
-  if (l == NULL) return;
-  if(l->first == NULL) return;
-  if(l->first->next == NULL) {
+  int swapped;
+  element *ptr1 = l->first;
+  element *lptr = NULL;
+
+  if(l == NULL)
     return;
-  }
+  if (l->first == NULL)
+    return;
 
-  element *curr = l->first->next;
+  do {
+    swapped = 0;
+    ptr1 = l->first;
 
-  while (curr != NULL) {
-    element *insert = curr;
-    element *temp = insert->next;
+    while (ptr1->next != lptr) {
+      if (compare(ptr1, ptr1->next) > 0) {
+        element *temp = ptr1;
+        ptr1 = ptr1->next;
+        temp->next = ptr1->next;
+        ptr1->next = temp;
 
-    while (insert != l->first && compare(insert, insert->next) > 0) {
-      element *prev = l->first;
-      while (prev->next != insert) {
-        prev = prev->next;
+        if (temp == l->first)
+          l->first = ptr1;
+        swapped = 1;
       }
-
-      prev->next = insert->next;
-      insert->next = insert->next->next;
-      prev->next->next = insert;
+      else {
+        ptr1 = ptr1->next;
+      }
     }
-    curr = temp;
+    lptr = ptr1;
   }
-}*/
+  while (swapped);
+}
+*/
 void listSort(list *l)
 {
   element *p, *q, *e, *tail, *list = l->first;
