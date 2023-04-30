@@ -128,36 +128,49 @@ void clear(list *l) {
   //Czyścimy początkowe wskaźniki listy poprzez funkcję inicjalizacyjną  
   list_initialize(l);
 }
+/*
+Funkcja sortująca strukturę linked list, korzysta z algorytmu sortowania bąbelkowego
+Jako argument przyjmuje:
+- l: wskaźnik na pierwszy element listy
+*/
 void listSort(list *l) {
   int swapped;
   element *ptr1 = l->first;
   element *lptr = NULL;
 
-  if (l == NULL)
+  // Sprawdzenie, czy lista nie jest pusta lub czy wskaźnik na listę nie jest równy NULL
+  if(l == NULL)
     return;
   if (l->first == NULL)
     return;
 
+  // Wykonanie sortowania bąbelkowego
   do {
     swapped = 0;
     ptr1 = l->first;
 
+    // Pętla wewnętrzna przechodząca przez elementy listy i porównująca ich wartości
     while (ptr1->next != lptr) {
       if (compare(ptr1, ptr1->next) > 0) {
+        // Jeśli wartość elementu ptr1 jest większa niż wartość elementu ptr1->next, zamiana miejscami
         element *temp = ptr1;
         ptr1 = ptr1->next;
         temp->next = ptr1->next;
         ptr1->next = temp;
 
+        // Aktualizacja wskaźnika na pierwszy element, jeśli temp był pierwszym elementem w liście
         if (temp == l->first)
           l->first = ptr1;
+
         swapped = 1;
-      } else {
+      }
+      else {
         ptr1 = ptr1->next;
       }
     }
     lptr = ptr1;
-  } while (swapped);
+  }
+  while (swapped);
 }
 //Funkcja parsująca argumenty
 int argumentParse(int argc, char **argv, char **source, char **destination,
@@ -291,56 +304,83 @@ int listFilesAndDir(DIR *directory, list *files, list *dirs) {
   //Kończymy bez błędu
   return 0;
 }
-//Funkcja do tworzenia katalagów, w przypadku gdyby trzeba było zmodyfikować tę procedurę
+/*Funkcja tworząca pusty katalog
+Jako argument przyjmuje:
+- path: ścieżkę gdzie ma być utowrzony katalog
+- mode: tryb w jakim ma zostać utowrzony katalog
+Zwraca:
+- status: wartość typu int zwracana przez funkcję mkdir
+*/
 int createEmptyDir(const char *path, mode_t mode) { return mkdir(path, mode); }
-//
+/*
+Funkcja removeDirRecursively służy do rekurencyjnego usuwania katalogów
+Jako argument przyjmuje:
+- path: ścieżkę do katalogu, który ma być usunięty
+- pathLength: długość ścieżki do tego katalogu
+Zwraca status:
+- 0: wartość oznaczająca powodzenie
+- wartość ujmena: oznaczająca błąd
+*/
 int removeDirRecursively(const char *path, const size_t pathLength) {
+  //Wstępnie ustawiamy status oznaczający brak błędu
   int ret = 0;
+  //Otwieramy katalog źródłowy
   DIR *dir = opendir(path);
+  //W przypadku wystąpienia błędu ustawiamy wartość zwracaną na -1, przechodzimy z użyciem goto do sekcji exit
   if (!dir) {
     ret = -1;
     goto exit;
   }
-
+  //Tworzymy lisy na pliki i podkatalogi a następnie je inicjujemy
   list files, subdirs;
   list_initialize(&files);
   list_initialize(&subdirs);
-
+  
+  //Wypełniamy listy plików i podkatalogów
+  //Jeżeli wystąpił błąd ustawiamy status na -2, przechodzimy z użyciem goto do sekcji cleanup
   if (listFilesAndDir(dir, &files, &subdirs) < 0) {
     ret = -2;
     goto clean_up;
   }
-
+  
+  //Tworzymy tablicę na ścieżki podkatalogów i plików
   char subPath[PATH_MAX];
+  //Przepisujemy ścieżkę katalogu jako początek ścieżek jego plików i podkatalogów
   strcpy(subPath, path);
-
+  
+  //Przechodzimy po katalogach i rekurencyjnie je usuwamy
   for (element *cur = subdirs.first; cur != NULL; cur = cur->next) {
     size_t subPathLength =
         addtoSubDirName(subPath, pathLength, cur->value->d_name);
+    //Jeżeli wystąpi błąd ustawiamy status na -4 przechodzimy do sekcji clean_up
     if (removeDirRecursively(subPath, subPathLength) < 0) {
       ret = -4;
       goto clean_up;
     }
   }
-
+  
+  //Przechodzimy po plikach i je usuwamy
   for (element *cur = files.first; cur != NULL; cur = cur->next) {
     stringAdd(subPath, pathLength, cur->value->d_name);
+    //W przypadku wystąpienia błedu ustawiamy status na -5, przechodzimy do sekcji clean_up
     if (removeFile(subPath) == -1) {
       ret = -5;
       goto clean_up;
     }
   }
-
+  //Jeżeli nie uda się usunąć katalogu zwracamy status oznaczający, błąd przechodzimy do sekcji clean_up
   if (rmdir(path) == -1) {
     ret = -6;
     goto clean_up;
   }
 
 clean_up:
+  //Czyścimy listy plików i podkatalogów
   clear(&files);
   clear(&subdirs);
 
 exit:
+  //Jeżeli katalog został otwarty to należy go zamknąć
   if (dir) {
     closedir(dir);
   }
@@ -348,7 +388,7 @@ exit:
   if (ret >= 0 && ret <= 2) {
     ret = -ret;
   }
-
+  //Zwracamy status
   return ret;
 }
 
@@ -1153,125 +1193,192 @@ int updateDestDir(const char *srcDirPath, const size_t srcDirPathLength,
   free(srcSubDirPath);
   return returnCode;
 }
+/*
+Funkcja syncNonRecursively służy do synchornizowania nierekurenyjnego
+Funkcja przyjmuje 4 argumenty:
+- sourcePath: ścieżka pliku źródłowego 
+- sourcePathLength: długość ścieżki pliku źródłowego
+- destinationPath: ścieżka pliku docelowego 
+- destinationPathLength: długość ścieżki pliku docelowego
+Zwraca: 
+- 0 w przypadku powodzenia
+- wartość ujemną w przypadku błędu
+*/
 int syncNonRecursively(const char *sourcePath, const size_t sourcePathLength,
                        const char *destinationPath,
                        const size_t destinationPathLength) {
+  //Wstępnie ustawiamy status oznaczający brak błędu - ret = 0
   int ret = 0;
+  //Otwieramy katalog źródłowy
   DIR *dirS = opendir(sourcePath);
+  //Jeżeli wystąpił błąd ustawiamy wartość zwracaną na -1, przechodzimy z użyciem goto do sekcji cleanup
   if (dirS == NULL) {
     ret = -1;
     goto cleanup;
   }
-
+  //Otwieramy katalog docelowy
   DIR *dirD = opendir(destinationPath);
+  //Jeżeli wystąpił błąd ustawiamy wartość zwracaną na -2, przechodzimy z użyciem goto do sekcji cleanup
   if (dirD == NULL) {
     ret = -2;
     goto cleanup;
   }
-
+  //Tworzymy listy do przechowywania plików z katalogu źródłowego i docelowego
   list filesS, filesD;
+  //inicjujemy listy plików z katalogu źródłowego oraz docelowego
   list_initialize(&filesS);
   list_initialize(&filesD);
+  //Wypełniamy listę plików z katalogu źródłowego. W przypadku wystąpienia błędu ustawiamy wartość zwracaną na -3, przechodzimy z użyciem goto do sekcji cleanup
   if (listFiles(dirS, &filesS) < 0) {
     ret = -3;
     goto cleanup;
   }
+  //Wypełniamy listę plików z katalogu docelowego. W przypadku wystąpienia błędu ustawiamy wartość zwracaną na -4, przechodzimy z użyciem goto do sekcji cleanup
   if (listFiles(dirD, &filesD) < 0) {
     ret = -4;
     goto cleanup;
   }
+  //Sortujemy listy plików z katalogu źródłowego oraz docelowego
   listSort(&filesS);
   listSort(&filesD);
-
+  //Sprawdzamy zgodność w przypadku jej braku aktualizujemy pliki w katalgou docelowym
   if (updateDestFiles(sourcePath, sourcePathLength, &filesS, destinationPath,
                       destinationPathLength, &filesD) != 0) {
     ret = -5;
     goto cleanup;
   }
-
+//Sekcja kończąca działanie funkcji
 cleanup:
+  //Jeżeli katalog źródłowy został otwarty to należy go zamknąć
   if (dirS != NULL)
     closedir(dirS);
-
+  //Jeżeli katalog docelowy został otwarty to należy go zamknąć
   if (dirD != NULL)
     closedir(dirD);
 
+  //Czyścimy listy plików z katalogu źródłowego oraz docelowego
   clear(&filesS);
   clear(&filesD);
-
+  
+  //Wartość zwracana
   return ret;
 }
 
+/*
+Funkcja syncRecursively służy do synchornizowania rekurenyjnego
+Funkcja przyjmuje 4 argumenty:
+- sourcePath: ścieżka pliku źródłowego 
+- sourcePathLength: długość ścieżki pliku źródłowego
+- destinationPath: ścieżka pliku docelowego 
+- destinationPathLength: długość ścieżki pliku docelowego
+Zwraca: 
+- 0 w przypadku powodzenia
+- wartość ujemną w przypadku błędu
+*/
 int syncRecursively(const char *sourcePath, const size_t sourcePathLength,
                     const char *destinationPath,
                     const size_t destinationPathLength) {
+  //Wstępnie ustawiamy status oznaczający brak błędu - ret = 0
   int ret = 0;
+  //Otwieramy katalog źródłowy
   DIR *dirS = opendir(sourcePath);
+  //Otwieramy katalog docelowy
   DIR *dirD = opendir(destinationPath);
+  //Jeżeli wystąpił błąd przy otwieraniu katalogu źródłowego ustawiamy ret = -1
   if (dirS == NULL)
     ret = -1;
+  //Jeżeli wystąpił błąd przy otwieraniu katalogu docelowego ustawiamy ret = -2
   else if (dirD == NULL)
     ret = -2;
   else {
+    //Tworzymy listy na pliki i podkatalogi z katalogu źródłowego oraz docelowego
     list filesS, subdirsS, filesD, subdirsD;
+    //Inicjujemy listę plików z katalogu źródłowego
     list_initialize(&filesS);
+    //Inicjujemy listę podkatalogów z katalogu źródłowego
     list_initialize(&subdirsS);
+    //Inicjujemy listę plików z katalogu źródłowego
     list_initialize(&filesD);
+    //Inicjujemy listę podkatalogów z katalogu źródłowego
     list_initialize(&subdirsD);
 
+    // Wypełniamy listy plików i podkatalogów z katalogu źródłowego. W przypadku wystąpienia błędu ustawiamy status na -3
     if (listFilesAndDir(dirS, &filesS, &subdirsS) < 0)
       ret = -3;
+    // Wypełniamy listy plików i podkatalogów z katalogu źródłowego. W przypadku wystąpienia błędu ustawiamy status na -4
     else if (listFilesAndDir(dirD, &filesD, &subdirsD) < 0)
       ret = -4;
     else {
+      //Sortujemy listy plików z katalogu źródłowego i docelowego
       listSort(&filesS);
       listSort(&filesD);
-
+      
+      //Sprawdzamy zgodność w przypadku jej braku aktualizujemy pliki w katalogu docelowym, 
+      //jeżeli wystąpił błąd ustawiamy wartość zwracaną na -5
       if (updateDestFiles(sourcePath, sourcePathLength, &filesS,
                           destinationPath, destinationPathLength,
                           &filesD) != 0) {
         ret = -5;
       }
-
+      //czyścimy listę plików z katalogu źródłowego i docelowego  
       clear(&filesS);
       clear(&filesD);
-
+      
+      //sortujemy listy podkatalogów z katalogu źródłowego i docelowego
       listSort(&subdirsS);
       listSort(&subdirsD);
 
+      //Tworzymy tablicę isReady, która w indeksie i będzie przechowywać wartość 1 jeżeli i-ty podkatalog z katalogu źródłowego będzie gotowy do rekurencyjnej synchronizacji
+      //Rezerwujemy pamięć o rozmiarze będącym liczbą podkatalogów w katalogu źródłowym
       char *isReady = malloc(sizeof(char) * subdirsS.number);
+      //W przypadku wystąpienia błędu ustawiamy status na -6
       if (isReady == NULL)
         ret = -6;
       else {
+        // Sprawdzamy zgodność i ewentualnie aktualizujemy podkatalogi w katalogu docelowym
+        //W odpowiedni sposób uzupełniamy tablicę isReady
+        //Jeżeli wystąpił błąd ustawiamy wartość zwracaną na -7
         if (updateDestDir(sourcePath, sourcePathLength, &subdirsS,
                           destinationPath, destinationPathLength, &subdirsD,
                           isReady) != 0)
           ret = -7;
 
+        //Czyścimy listę podkatalogów z katalogu docelowego
         clear(&subdirsD);
 
+        //Deklarujemy oraz rezerwujemy pamięć na ścieżki podkatalogów z katalgou źródłowego i docelowego
         char *nextSourcePath = malloc(sizeof(char) * PATH_MAX);
         char *nextDestinationPath = malloc(sizeof(char) * PATH_MAX);
 
+        //W przypadku wystąpienia błędu ustawiamy status na -8
         if (nextSourcePath == NULL)
           ret = -8;
+        //W przypadku wystąpienia błędu ustawiamy status na -9  
         else if (nextDestinationPath == NULL)
           ret = -9;
         else {
+          //Kopiujemy ścieżkę katalogu źródłowego jako początek ścieżek jego podkatalogów
           strcpy(nextSourcePath, sourcePath);
+          //Kopiujemy ścieżkę katalogu docelowego jako początek ścieżek jego podkatalogów
           strcpy(nextDestinationPath, destinationPath);
 
+          //Zapamiętujemy wskaźnik na pierwszy podkatalog z katalogu źródłowego
           element *curS = subdirsS.first;
           unsigned int i = 0;
-
+          
+          //Przechodzimy po wszystkich podkatalogach katalogu źródłowego
           while (curS != NULL) {
+            //Jeżeli dany podkatalog jest gotowy do synchronizacji
             if (isReady[i++] == 1) {
+              //Tworzymy ścieżkę podkatalogu z katalogu źródłowego i zapisujemy jej długość
               size_t nextSourcePathLength = addtoSubDirName(
                   nextSourcePath, sourcePathLength, curS->value->d_name);
+              //Tworzymy ścieżkę podkatalogu z katalogu docelowego i zapisujemy jej długość
               size_t nextDestinationPathLength =
                   addtoSubDirName(nextDestinationPath, destinationPathLength,
                                   curS->value->d_name);
-
+              //Wykonujemy rekurencyjne synchronizowanie podkatalogów
+              //W przypadku błędu ustawiamy wartość zwracaną na -10
               if (syncRecursively(nextSourcePath, nextSourcePathLength,
                                   nextDestinationPath,
                                   nextDestinationPathLength) < 0)
@@ -1280,22 +1387,27 @@ int syncRecursively(const char *sourcePath, const size_t sourcePathLength,
             curS = curS->next;
           }
         }
+        //Zwalniamy pamięć zarezerwowaną na isReady
         free(isReady);
 
+        //Jeżeli zarezerwowano pamięć to należy ją zwolnić
         if (nextSourcePath != NULL)
           free(nextSourcePath);
         if (nextDestinationPath != NULL)
           free(nextDestinationPath);
       }
     }
+    //Czyścimy listę podkatalogów z katalogu źródłowego
     clear(&subdirsS);
     if (subdirsD.number != 0)
       clear(&subdirsD);
   }
+  //Jeżeli katalogi zostały otwarte należy je zamknąć
   if (dirS != NULL)
     closedir(dirS);
   if (dirD != NULL)
     closedir(dirD);
-
+  
+  //Wartość zwracana
   return ret;
 }
