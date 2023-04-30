@@ -21,30 +21,31 @@ static unsigned long long copyThreshold;
 
 char forcedSyncro;
 char stopDaemon;
-int main(int argc, char** argv)
-{
-    char* src,*dst;
-    unsigned int sleepInterval;
-    char isRecursive;
-    printf("%d\n",argc);
-    if(argumentParse(argc,argv,&src,&dst,&sleepInterval,&isRecursive)<0){
-        printf("Prawidlowy sposob uzycia: SyncDaemon [-i <czas_spania>] [-R] [-t <minimalna_wielkosc_kopiowania_duzych_plikow>] sciezka_zrodlowa sciezka_docelowa\n");
-        return -1;
-    }
-    if(isDirectoryValid(dst)<0){
-        perror(dst);
-        return -2;
-    }
-    if(isDirectoryValid(src)<0){
-        perror(src);
-        return -3;
-    }
-    Daemon(src,dst,sleepInterval,isRecursive);
-    return 0;
+int main(int argc, char **argv) {
+  char *src, *dst;
+  unsigned int sleepInterval;
+  char isRecursive;
+  printf("%d\n", argc);
+  if (argumentParse(argc, argv, &src, &dst, &sleepInterval, &isRecursive) < 0) {
+    printf("Prawidlowy sposob uzycia: SyncDaemon [-i <czas_spania>] [-R] [-t "
+           "<minimalna_wielkosc_kopiowania_duzych_plikow>] sciezka_zrodlowa "
+           "sciezka_docelowa\n");
+    return -1;
+  }
+  if (isDirectoryValid(dst) < 0) {
+    perror(dst);
+    return -2;
+  }
+  if (isDirectoryValid(src) < 0) {
+    perror(src);
+    return -3;
+  }
+  Daemon(src, dst, sleepInterval, isRecursive);
+  return 0;
 }
-struct element{
-    element *next;
-    struct dirent *value;
+struct element {
+  element *next;
+  struct dirent *value;
 };
 int compare(element *a, element *b) {
   return strcmp(a->value->d_name, b->value->d_name);
@@ -90,7 +91,7 @@ void listSort(list *l) {
   element *ptr1 = l->first;
   element *lptr = NULL;
 
-  if(l == NULL)
+  if (l == NULL)
     return;
   if (l->first == NULL)
     return;
@@ -109,14 +110,12 @@ void listSort(list *l) {
         if (temp == l->first)
           l->first = ptr1;
         swapped = 1;
-      }
-      else {
+      } else {
         ptr1 = ptr1->next;
       }
     }
     lptr = ptr1;
-  }
-  while (swapped);
+  } while (swapped);
 }
 int argumentParse(int argc, char **argv, char **source, char **destination,
                   unsigned int *sleepInterval, char *isRecursive) {
@@ -270,25 +269,39 @@ exit:
   return ret;
 }
 
+// Funkcja kopiuje plik z podanej ścieżki źródłowej na podaną ścieżkę docelową
+// z zachowaniem trybu dostępu oraz czasów dostępu i modyfikacji.
+// Argumenty funkcji:
+// - srcFilePath: ścieżka źródłowa pliku do skopiowania
+// - dstFilePath: ścieżka docelowa pliku skopiowanego
+// - dstMode: tryb dostępu do ustawienia dla skopiowanego pliku
+// - dstAccessTime: czas dostępu do ustawienia dla skopiowanego pliku
+// - dstModificationTime: czas modyfikacji do ustawienia dla skopiowanego pliku
+// Zwraca:
+// - 0 w przypadku powodzenia
+// - wartość mniejszą od zera w przypadku błędu
+
 int copySmallFile(const char *srcFilePath, const char *dstFilePath,
                   const mode_t dstMode, const struct timespec *dstAccessTime,
                   const struct timespec *dstModificationTime) {
   int ret = 0, in = -1, out = -1;
-  // Open source file for reading and save its file descriptor
+  // Otwórz plik źródłowy do odczytu i zapisz jego deskryptor pliku
   if ((in = open(srcFilePath, O_RDONLY)) == -1) {
     ret = -1;
     goto cleanup;
   }
 
-
-  // Open destination file for writing, create it if it doesn't exist, and clear
-  // it if it exists. Save its file descriptor
+  // Otwórz plik docelowy do zapisu, utwórz go, jeśli nie istnieje,
+  // oraz wyczyść jego zawartość, jeśli istnieje. Zapisz jego deskryptor pliku.
   if ((out = open(dstFilePath, O_WRONLY | O_CREAT | O_TRUNC, dstMode)) == -1) {
     ret = -2;
     goto cleanup;
   }
-  const struct timespec time[2]={*dstAccessTime,*dstModificationTime};
-  // Read data from source file and write it to destination file
+
+  // Ustawienie czasu dostępu i modyfikacji dla pliku docelowego
+  const struct timespec time[2] = {*dstAccessTime, *dstModificationTime};
+
+  // Odczytaj dane z pliku źródłowego i zapisz je do pliku docelowego
   char buffer[BUFFER];
   ssize_t bytesRead, bytesWritten;
 
@@ -305,12 +318,14 @@ int copySmallFile(const char *srcFilePath, const char *dstFilePath,
     goto cleanup;
   }
 
-  // Set access and modification time of destination file
+  // Ustaw czas dostępu i modyfikacji dla pliku docelowego
   if (futimens(out, time) == -1) {
     ret = -3;
     goto cleanup;
   }
+
 cleanup:
+  // Zamknij deskryptory plików i zwróć wynik
   if (in != -1)
     close(in);
   if (out != -1)
@@ -319,84 +334,145 @@ cleanup:
   return ret;
 }
 
+// Funkcja copyBigFile służy do kopiowania dużych plików.
+// Funkcja przyjmuje pięć argumentów:
+// - srcFilePath: ścieżka pliku źródłowego, który chcemy skopiować
+// - dstFilePath: ścieżka pliku docelowego, do którego chcemy skopiować plik
+// źródłowy
+// - fileSize: rozmiar pliku źródłowego w bajtach
+// - dstMode: prawa dostępu, jakie zostaną nadane plikowi docelowemu
+// - dstAccessTime: czas dostępu, jaki zostanie nadany plikowi docelowemu
+// - dstModificationTime: czas modyfikacji, jaki zostanie nadany plikowi
+// docelowemu
+// Zwraca:
+// - 0 w przypadku powodzenia
+// - wartość ujemną w przypadku błędu
+
 int copyBigFile(const char *srcFilePath, const char *dstFilePath,
                 const unsigned long long fileSize, const mode_t dstMode,
                 const struct timespec *dstAccessTime,
                 const struct timespec *dstModificationTime) {
+  // Wstępnie zapisujemy status oznaczający brak błędu.
   int ret = 0, in = -1, out = -1;
+  // Otwieramy plik źródłowy w trybie tylko do odczytu
   if ((in = open(srcFilePath, O_RDONLY)) == -1)
+    // Ustawiamy kod błędu. Po tym program natychmiast przechodzi na koniec
+    // funkcji.
     ret = -1;
   else {
-    // Get the modification time of the destination file
+    // Pobierz czas modyfikacji pliku docelowego
     struct stat dstStat;
     if (stat(dstFilePath, &dstStat) == -1) {
-      // If the destination file doesn't exist, create it
+      // Jeśli plik docelowy nie istnieje, utwórz go
       if (errno == ENOENT) {
         out = open(dstFilePath, O_WRONLY | O_CREAT | O_TRUNC, dstMode);
         if (out == -1) {
+          // Ustawiamy kod błędu.
           ret = -2;
         }
       } else {
         ret = -2;
       }
     } else {
-      // If the destination file exists, check if it needs to be updated
+      // Jeśli plik docelowy istnieje, sprawdź, czy wymaga aktualizacji
       if (dstModificationTime->tv_sec >= dstStat.st_mtim.tv_sec &&
           dstModificationTime->tv_nsec >= dstStat.st_mtim.tv_nsec) {
-        // The destination file is already up-to-date, no need to copy
+        // Plik docelowy jest już aktualny, nie trzeba kopiować
         return ret;
       }
       out = open(dstFilePath, O_WRONLY | O_TRUNC);
       if (out == -1) {
+        // Ustawiamy kod błędu.
         ret = -2;
       }
     }
     if (ret == 0) {
+      // Ustaw atrybuty pliku docelowego
       if (fchmod(out, dstMode) == -1) {
         ret = -3;
       } else {
+        // Utwórz mapowanie pamięci wirtualnej dla pliku źródłowego
         char *map;
+        // Odwzorowujemy (mapujemy) w pamięci plik źródłowy w trybie do odczytu.
+        // Jeżeli wystąpił błąd
         if ((map = mmap(0, fileSize, PROT_READ, MAP_SHARED, in, 0)) ==
             MAP_FAILED)
+          // Ustawiamy kod błędu.
           ret = -4;
         else {
+          // Wysyłamy jądru wskazówkę (poradę), że plik źródłowy będzie
+          // odczytywany sekwencyjnie.
           if (madvise(map, fileSize, MADV_SEQUENTIAL) == -1)
             ret = 1;
+          // Bufor odczytu pliku
           char buffer[BUFFER];
-          unsigned long long b;
-          char *position;
+          unsigned long long b; // Numer bajtu w pliku źródłowym.
+          char *position;       // Pozycja w buforze.
           size_t remainingBytes;
           ssize_t bytesWritten;
           for (b = 0; b + BUFFER < fileSize; b += BUFFER) {
+            // Kopiujemy BUFFER (rozmiar bufora) bajtów ze zmapowanej pamięci
+            // do bufora.
             memcpy(buffer, map + b, BUFFER);
             position = buffer;
+            // Zapisujemy całkowitą bajtów pozostałych do zapisania, która
+            // zawsze
+            // jest równa rozmiarowi bufora.
             remainingBytes = BUFFER;
+            // Dopóki liczby bajtów pozostałych do zapisania i bajtów zapisanych
+            // w
+            // aktualnej iteracji są niezerowe.
             while (remainingBytes != 0 &&
                    (bytesWritten = write(out, position, remainingBytes)) != 0) {
+              // Obsłuż błędy zapisu
               if (bytesWritten == -1) {
+                // Jeżeli funkcja write została przerwana odebraniem sygnału.
+                // Blokujemy SIGUSR1 i SIGTERM na czas synchronizacji, więc te
+                // sygnały nie mogą spowodować tego błędu.
                 if (errno == EINTR)
-                  continue;
+
+                  continue; // Ponawiamy próbę zapisu.
+                            // Jeżeli wystąpił inny błąd
+                            // Ustawiamy kod błędu.
                 ret = -6;
-                b = ULLONG_MAX - BUFFER + 1;
-                break;
+                b = ULLONG_MAX - BUFFER +
+                    1; // Ustawiamy b aby przerwać pętlę for.
+
+                break; // Przerywamy pętlę.
               }
+              // O liczbę bajtów zapisanych w aktualnej iteracji zmniejszamy
+              // liczbę pozostałych bajtów i przesuwamy pozycję w buforze.
               remainingBytes -= bytesWritten;
               position += bytesWritten;
             }
           }
           if (ret == 0) {
-            memcpy(buffer, map + b, fileSize - b);
-            position = buffer;
+            // Zapisujemy liczbę bajtów z końca pliku, które nie zmieściły się w
+            // jednym całym buforze.
             remainingBytes = fileSize - b;
+            // Kopiujemy je ze zmapowanej pamięci do bufora.
+            memcpy(buffer, map + b, remainingBytes);
+            // Zapisujemy pozycję pierwszego bajtu bufora.
+            position = buffer;
+            // Dopóki liczby bajtów pozostałych do zapisania i bajtów zapisanych
+            // w aktualnej iteracji są niezerowe.
             while (remainingBytes != 0 &&
                    (bytesWritten = write(out, position, remainingBytes)) != 0) {
+              // Jeżeli wystąpił błąd w funkcji write.
               if (bytesWritten == -1) {
+                // Jeżeli funkcja write została przerwana odebraniem sygnału.
                 if (errno == EINTR)
+                  // Ponawiamy próbę zapisu.
                   continue;
-                ret = -6;
+                // Ustawiamy kod błędu.
+                ret = -7;
+                // Przerywamy pętlę.
                 break;
               }
+              // O liczbę bajtów zapisanych w aktualnej iteracji zmniejszamy
+              // liczbę pozostałych bajtów i
               remainingBytes -= bytesWritten;
+              // przesuwamy pozycję w buforze.
               position += bytesWritten;
             }
           }
@@ -406,8 +482,13 @@ int copyBigFile(const char *srcFilePath, const char *dstFilePath,
       close(out);
     }
   }
+  // Jeśli udało się otworzyć plik wejściowy, to go zamykamy
   if (in != -1)
     close(in);
+
+  // Jeśli kopiowanie pliku zakończyło się sukcesem, to aktualizujemy czas
+  // dostępu i modyfikacji pliku docelowego Otwieramy plik docelowy do zapisu i
+  // ustawiamy czas dostępu i modyfikacji
   if (ret == 0) {
     int fd = open(dstFilePath, O_WRONLY);
     if (fd != -1) {
@@ -417,15 +498,29 @@ int copyBigFile(const char *srcFilePath, const char *dstFilePath,
       ret = -5;
     }
   }
+
+  // Zwracamy status kopiowania pliku
   return ret;
 }
 
+/*
+Funkcja removeFile służy do usuwania pliku o podanej ścieżce.
+Jako argument przyjmuje wskaźnik do stałego łańcucha znaków reprezentującego
+ścieżkę pliku. Funkcja zwraca wartość całkowitą oznaczającą powodzenie lub
+niepowodzenie operacji usuwania pliku.
+*/
 int removeFile(const char *path) {
-  int result = unlink(path);
-  if (result == -1) {
-    fprintf(stderr, "Error removing file: %s\n", path);
+  int result =
+      unlink(path); // Usuwamy plik o podanej ścieżce przy pomocy funkcji
+                    // unlink() i przypisujemy wynik do zmiennej result.
+  if (result == -1) { // Sprawdzamy, czy usunięcie pliku zakończyło się błędem.
+    fprintf(
+        stderr, "Error removing file: %s\n",
+        path); // Wypisujemy komunikat o błędzie na standardowe wyjście błędów.
   }
-  return result;
+  return result; // Zwracamy wartość zwróconą przez funkcję unlink(), która
+                 // oznacza powodzenie lub niepowodzenie operacji usuwania
+                 // pliku.
 }
 
 void Daemon(char *source, char *destination, unsigned int sleepInterval,
@@ -708,7 +803,8 @@ int updateDestDir(const char *srcDirPath, const size_t srcDirPathLength,
     dstSubDirName = currentDst->value->d_name;
     compare = strcmp(srcSubDirName, dstSubDirName);
     if (compare > 0) {
-      size_t len = addtoSubDirName(dstSubDirPath, dstDirPathLength, dstSubDirName);
+      size_t len =
+          addtoSubDirName(dstSubDirPath, dstDirPathLength, dstSubDirName);
       status = removeDirRecursively(dstSubDirPath, len);
       syslog(LOG_INFO, "delete directory %s - status %d\n", dstSubDirPath,
              status);
@@ -855,7 +951,8 @@ int syncNonRecursively(const char *sourcePath, const size_t sourcePathLength,
   listSort(&filesS);
   listSort(&filesD);
 
-  if (updateDestFiles(sourcePath, sourcePathLength, &filesS, destinationPath, destinationPathLength, &filesD) != 0) {
+  if (updateDestFiles(sourcePath, sourcePathLength, &filesS, destinationPath,
+                      destinationPathLength, &filesD) != 0) {
     ret = -5;
     goto cleanup;
   }
@@ -873,93 +970,100 @@ cleanup:
   return ret;
 }
 
-int syncRecursively(const char *sourcePath, const size_t sourcePathLength, 
-                    const char *destinationPath, 
-                    const size_t destinationPathLength){
-    int ret = 0;
-    DIR *dirS = opendir(sourcePath);
-    DIR *dirD = opendir(destinationPath);
-    if (dirS == NULL)
-        ret = -1;
-    else if (dirD == NULL) 
-        ret = -2;
-    else{
-        list filesS, subdirsS, filesD, subdirsD;
-        list_initialize(&filesS);
-        list_initialize(&subdirsS);
-        list_initialize(&filesD);
-        list_initialize(&subdirsD);
+int syncRecursively(const char *sourcePath, const size_t sourcePathLength,
+                    const char *destinationPath,
+                    const size_t destinationPathLength) {
+  int ret = 0;
+  DIR *dirS = opendir(sourcePath);
+  DIR *dirD = opendir(destinationPath);
+  if (dirS == NULL)
+    ret = -1;
+  else if (dirD == NULL)
+    ret = -2;
+  else {
+    list filesS, subdirsS, filesD, subdirsD;
+    list_initialize(&filesS);
+    list_initialize(&subdirsS);
+    list_initialize(&filesD);
+    list_initialize(&subdirsD);
 
-        if (listFilesAndDir(dirS, &filesS, &subdirsS) < 0) 
-            ret = -3;
-        else if (listFilesAndDir(dirD, &filesD, &subdirsD) < 0) 
-            ret = -4;
+    if (listFilesAndDir(dirS, &filesS, &subdirsS) < 0)
+      ret = -3;
+    else if (listFilesAndDir(dirD, &filesD, &subdirsD) < 0)
+      ret = -4;
+    else {
+      listSort(&filesS);
+      listSort(&filesD);
+
+      if (updateDestFiles(sourcePath, sourcePathLength, &filesS,
+                          destinationPath, destinationPathLength,
+                          &filesD) != 0) {
+        ret = -5;
+      }
+
+      clear(&filesS);
+      clear(&filesD);
+
+      listSort(&subdirsS);
+      listSort(&subdirsD);
+
+      char *isReady = malloc(sizeof(char) * subdirsS.number);
+      if (isReady == NULL)
+        ret = -6;
+      else {
+        if (updateDestDir(sourcePath, sourcePathLength, &subdirsS,
+                          destinationPath, destinationPathLength, &subdirsD,
+                          isReady) != 0)
+          ret = -7;
+
+        clear(&subdirsD);
+
+        char *nextSourcePath = malloc(sizeof(char) * PATH_MAX);
+        char *nextDestinationPath = malloc(sizeof(char) * PATH_MAX);
+
+        if (nextSourcePath == NULL)
+          ret = -8;
+        else if (nextDestinationPath == NULL)
+          ret = -9;
         else {
-            listSort(&filesS);
-            listSort(&filesD);
+          strcpy(nextSourcePath, sourcePath);
+          strcpy(nextDestinationPath, destinationPath);
 
-            if (updateDestFiles(sourcePath, sourcePathLength, &filesS, destinationPath, destinationPathLength, &filesD) != 0) {
-                ret = -5;
+          element *curS = subdirsS.first;
+          unsigned int i = 0;
+
+          while (curS != NULL) {
+            if (isReady[i++] == 1) {
+              size_t nextSourcePathLength = addtoSubDirName(
+                  nextSourcePath, sourcePathLength, curS->value->d_name);
+              size_t nextDestinationPathLength =
+                  addtoSubDirName(nextDestinationPath, destinationPathLength,
+                                  curS->value->d_name);
+
+              if (syncRecursively(nextSourcePath, nextSourcePathLength,
+                                  nextDestinationPath,
+                                  nextDestinationPathLength) < 0)
+                ret = -10;
             }
-
-            clear(&filesS);
-            clear(&filesD);
-
-            listSort(&subdirsS);
-            listSort(&subdirsD);
-
-            char *isReady = malloc(sizeof(char) * subdirsS.number);
-            if (isReady == NULL) 
-                ret = -6;
-            else {
-                if (updateDestDir(sourcePath, sourcePathLength, &subdirsS, destinationPath, destinationPathLength, &subdirsD, isReady) != 0) 
-                    ret = -7;
-                    
-                clear(&subdirsD);
-
-                char *nextSourcePath = malloc(sizeof(char) * PATH_MAX); 
-                char *nextDestinationPath = malloc(sizeof(char) * PATH_MAX);
-
-                if(nextSourcePath == NULL)
-                    ret = -8;
-                else if(nextDestinationPath == NULL)
-                    ret = -9;
-                else{
-                    strcpy(nextSourcePath, sourcePath);
-                    strcpy(nextDestinationPath, destinationPath);
-
-                    element *curS = subdirsS.first;
-                    unsigned int i = 0;
-
-                    while (curS != NULL) {
-                        if (isReady[i++] == 1) {
-                            size_t nextSourcePathLength = addtoSubDirName(nextSourcePath, sourcePathLength, curS->value->d_name);
-                            size_t nextDestinationPathLength = addtoSubDirName(nextDestinationPath, destinationPathLength, curS->value->d_name);
-                            
-                            if (syncRecursively(nextSourcePath, nextSourcePathLength, nextDestinationPath, nextDestinationPathLength) < 0)
-                                ret = -10;
-                        }
-                        curS = curS->next;
-                    }
-                }
-                free(isReady);
-        
-                if (nextSourcePath != NULL)
-                    free(nextSourcePath);
-                if (nextDestinationPath != NULL)
-                    free(nextDestinationPath);
-            }
-
+            curS = curS->next;
+          }
         }
-        clear(&subdirsS);
-        if (subdirsD.number != 0)
-            clear(&subdirsD);
+        free(isReady);
+
+        if (nextSourcePath != NULL)
+          free(nextSourcePath);
+        if (nextDestinationPath != NULL)
+          free(nextDestinationPath);
+      }
     }
-    if (dirS != NULL)
-        closedir(dirS);
-    if (dirD != NULL)
-        closedir(dirD);
+    clear(&subdirsS);
+    if (subdirsD.number != 0)
+      clear(&subdirsD);
+  }
+  if (dirS != NULL)
+    closedir(dirS);
+  if (dirD != NULL)
+    closedir(dirD);
 
-    return ret;
+  return ret;
 }
-
