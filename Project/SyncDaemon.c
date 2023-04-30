@@ -360,6 +360,16 @@ int copySmallFile(const char *srcFilePath, const char *dstFilePath,
     goto cleanup;
   }
 
+  // Check if destination file already exists and if so, get its modification
+  // time
+  struct stat dstStat;
+  if (stat(dstFilePath, &dstStat) == 0) {
+    // If the destination file is already up to date, return success
+    if (dstStat.st_mtime >= dstModificationTime->tv_sec) {
+      goto cleanup;
+    }
+  }
+
   // Open destination file for writing, create it if it doesn't exist, and clear
   // it if it exists. Save its file descriptor
   if ((out = open(dstFilePath, O_WRONLY | O_CREAT | O_TRUNC, dstMode)) == -1) {
@@ -406,59 +416,85 @@ int copyBigFile(const char *srcFilePath, const char *dstFilePath,
   int ret = 0, in = -1, out = -1;
   if ((in = open(srcFilePath, O_RDONLY)) == -1)
     ret = -1;
-  else if ((out = open(dstFilePath, O_WRONLY | O_CREAT | O_TRUNC, dstMode)) ==
-           -1)
-    ret = -2;
-  else if (fchmod(out, dstMode) == -1)
-    ret = -3;
   else {
-    char *map;
-    if ((map = mmap(0, fileSize, PROT_READ, MAP_SHARED, in, 0)) == MAP_FAILED)
-      ret = -4;
-    else {
-      if (madvise(map, fileSize, MADV_SEQUENTIAL) == -1)
-        ret = 1;
-      char buffer[BUFFER];
-      unsigned long long b;
-      char *position;
-      size_t remainingBytes;
-      ssize_t bytesWritten;
-      for (b = 0; b + BUFFER < fileSize; b += BUFFER) {
-        memcpy(buffer, map + b, BUFFER);
-        position = buffer;
-        remainingBytes = BUFFER;
-        while (remainingBytes != 0 &&
-               (bytesWritten = write(out, position, remainingBytes)) != 0) {
-          if (bytesWritten == -1) {
-            if (errno == EINTR)
-              continue;
-            ret = -6;
-            b = ULLONG_MAX - BUFFER + 1;
-            break;
-          }
-          remainingBytes -= bytesWritten;
-          position += bytesWritten;
+    // Get the modification time of the destination file
+    struct stat dstStat;
+    if (stat(dstFilePath, &dstStat) == -1) {
+      // If the destination file doesn't exist, create it
+      if (errno == ENOENT) {
+        out = open(dstFilePath, O_WRONLY | O_CREAT | O_TRUNC, dstMode);
+        if (out == -1) {
+          ret = -2;
         }
+      } else {
+        ret = -2;
       }
-      if (ret == 0) {
-        memcpy(buffer, map + b, fileSize - b);
-        position = buffer;
-        remainingBytes = fileSize - b;
-        while (remainingBytes != 0 &&
-               (bytesWritten = write(out, position, remainingBytes)) != 0) {
-          if (bytesWritten == -1) {
-            if (errno == EINTR)
-              continue;
-            ret = -6;
-            break;
-          }
-          remainingBytes -= bytesWritten;
-          position += bytesWritten;
-        }
+    } else {
+      // If the destination file exists, check if it needs to be updated
+      if (dstModificationTime->tv_sec >= dstStat.st_mtim.tv_sec &&
+          dstModificationTime->tv_nsec >= dstStat.st_mtim.tv_nsec) {
+        // The destination file is already up-to-date, no need to copy
+        return ret;
       }
-      munmap(map, fileSize);
+      out = open(dstFilePath, O_WRONLY | O_TRUNC);
+      if (out == -1) {
+        ret = -2;
+      }
     }
-    close(out);
+    if (ret == 0) {
+      if (fchmod(out, dstMode) == -1) {
+        ret = -3;
+      } else {
+        char *map;
+        if ((map = mmap(0, fileSize, PROT_READ, MAP_SHARED, in, 0)) ==
+            MAP_FAILED)
+          ret = -4;
+        else {
+          if (madvise(map, fileSize, MADV_SEQUENTIAL) == -1)
+            ret = 1;
+          char buffer[BUFFER];
+          unsigned long long b;
+          char *position;
+          size_t remainingBytes;
+          ssize_t bytesWritten;
+          for (b = 0; b + BUFFER < fileSize; b += BUFFER) {
+            memcpy(buffer, map + b, BUFFER);
+            position = buffer;
+            remainingBytes = BUFFER;
+            while (remainingBytes != 0 &&
+                   (bytesWritten = write(out, position, remainingBytes)) != 0) {
+              if (bytesWritten == -1) {
+                if (errno == EINTR)
+                  continue;
+                ret = -6;
+                b = ULLONG_MAX - BUFFER + 1;
+                break;
+              }
+              remainingBytes -= bytesWritten;
+              position += bytesWritten;
+            }
+          }
+          if (ret == 0) {
+            memcpy(buffer, map + b, fileSize - b);
+            position = buffer;
+            remainingBytes = fileSize - b;
+            while (remainingBytes != 0 &&
+                   (bytesWritten = write(out, position, remainingBytes)) != 0) {
+              if (bytesWritten == -1) {
+                if (errno == EINTR)
+                  continue;
+                ret = -6;
+                break;
+              }
+              remainingBytes -= bytesWritten;
+              position += bytesWritten;
+            }
+          }
+          munmap(map, fileSize);
+        }
+      }
+      close(out);
+    }
   }
   if (in != -1)
     close(in);
